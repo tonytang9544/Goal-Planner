@@ -13,6 +13,13 @@ type PlannerView = 'month' | 'week' | 'day' | 'year'
 type AuthStatus = 'loading' | 'signed-out' | 'signed-in'
 type GoalDraft = { title: string; weekStarts: string[] }
 
+let nextObjectiveDraftId = 0
+
+function createObjectiveDraftKey(): string {
+  nextObjectiveDraftId += 1
+  return `objective-draft-${nextObjectiveDraftId}`
+}
+
 function utcDate(year: number, month: number, day: number): Date {
   const date = new Date(0)
   date.setUTCFullYear(year, month, day)
@@ -135,7 +142,7 @@ function GoalWizardPage({
   function beginAdd() {
     setGoalId('')
     setTitle('')
-    const firstObjective = { key: crypto.randomUUID(), title: '', weekStarts: [] }
+    const firstObjective = { key: createObjectiveDraftKey(), title: '', weekStarts: [] }
     setObjectives([firstObjective])
     setActiveObjective(firstObjective.key)
     setYear(initialYear)
@@ -158,7 +165,7 @@ function GoalWizardPage({
   }
 
   function addObjective() {
-    const objective = { key: crypto.randomUUID(), title: '', weekStarts: [] }
+    const objective = { key: createObjectiveDraftKey(), title: '', weekStarts: [] }
     setObjectives((current) => [...current, objective])
     setActiveObjective(objective.key)
   }
