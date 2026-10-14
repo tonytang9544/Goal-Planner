@@ -237,6 +237,21 @@
   background: #f4f6f1;
 }
 
+.button-danger {
+  border-color: #efd6d1;
+  background: #fff8f6;
+  color: #98483e;
+}
+
+.button-danger:hover:not(:disabled) {
+  background: #faece8;
+}
+
+.button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .button:focus-visible,
 .nav-button:focus-visible,
 .today-button:focus-visible,
@@ -295,6 +310,78 @@
   border-radius: 15px;
   background: #fff;
   box-shadow: 0 8px 26px rgb(52 68 56 / 4%);
+}
+
+.account-management {
+  max-width: 900px;
+  margin: 48px auto 0;
+}
+
+.account-management h1 {
+  margin: 0;
+  color: #35473c;
+  font-size: clamp(32px, 4vw, 46px);
+  letter-spacing: -0.045em;
+}
+
+.account-management-description {
+  max-width: 670px;
+  margin: 12px 0 24px;
+  color: #78827a;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.account-list {
+  overflow: hidden;
+  border: 1px solid #e6e8e1;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.account-row {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #edf0e9;
+}
+
+.account-row:last-child {
+  border-bottom: 0;
+}
+
+.account-row-identity {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.account-row-identity strong {
+  overflow: hidden;
+  color: #425347;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-row-identity span,
+.account-protected {
+  color: #879188;
+  font-size: 12px;
+}
+
+.success-banner {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #d4e5d4;
+  border-radius: 8px;
+  background: #f2f8f1;
+  color: #426c58;
+  font-size: 12px;
 }
 
 .planner-toolbar {

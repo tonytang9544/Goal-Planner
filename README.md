@@ -36,4 +36,6 @@ Create the first account from the sign-in page. Registration is currently open t
 
 Accounts use Argon2id password hashes and opaque, HTTP-only, same-site session cookies that expire after 14 days. The API scopes plan reads and writes to the signed-in user. Plans, completion changes, and historical plan snapshots are stored in SQLite. The planner and TV view poll the server every 15 seconds.
 
+Signed-in users can open `/accounts` from the planner to view household accounts and permanently remove another account. An account deletion also removes that user's sessions, plans, and progress history through SQLite foreign-key cascades in a transaction. The currently signed-in account cannot be removed from this page. This permission is shared by all signed-in users, not limited to an administrator.
+
 The project does not yet include account invitations/admin controls, a competition ranking chart, recurring plans, or internet-facing deployment. Keep the server restricted to the home network.

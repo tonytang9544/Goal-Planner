@@ -128,8 +128,10 @@ function PlannerItem({
 
 function App() {
   const isTvMode = window.location.pathname.replace(/\/+$/, '') === '/tv'
+  const isAccountManagement = window.location.pathname.replace(/\/+$/, '') === '/accounts'
   const [clock, setClock] = useState(() => new Date())
   const [items, setItems] = useState<PlanItem[]>([])
+  const [accounts, setAccounts] = useState<User[]>([])
   const [user, setUser] = useState<User | null>(null)
   const [household, setHousehold] = useState<HouseholdToday | null>(null)
   const [householdTimeZone, setHouseholdTimeZone] = useState(
@@ -141,6 +143,8 @@ function App() {
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null)
   const initialToday = dateKeyInTimeZone(clock, householdTimeZone)
   const [selectedDate, setSelectedDate] = useState(initialToday)
   const [view, setView] = useState<PlannerView>('month')
@@ -207,6 +211,11 @@ function App() {
     setHouseholdTimeZone(summary.timeZone)
   }, [])
 
+  const refreshAccounts = useCallback(async () => {
+    const result = await apiRequest<User[]>('/api/accounts')
+    setAccounts(result)
+  }, [])
+
   const refreshPlans = useCallback(async () => {
     const monthStart = dateFromKey(selectedDate)
     const gridStart = startOfWeek(
@@ -227,6 +236,8 @@ function App() {
       try {
         if (isTvMode) {
           await refreshHousehold()
+        } else if (isAccountManagement) {
+          await refreshAccounts()
         } else {
           await Promise.all([refreshPlans(), refreshHousehold()])
         }
@@ -249,7 +260,7 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [authStatus, isTvMode, refreshPlans, refreshHousehold])
+  }, [authStatus, isAccountManagement, isTvMode, refreshPlans, refreshHousehold, refreshAccounts])
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -286,6 +297,25 @@ function App() {
       setError(null)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not sign out')
+    }
+  }
+
+  async function removeAccount(account: User) {
+    if (!user || account.id === user.id) return
+    if (!window.confirm(`Permanently delete ${account.displayName}'s account and all of their plans and history? This cannot be undone.`)) {
+      return
+    }
+    setDeletingAccountId(account.id)
+    setError(null)
+    setNotice(null)
+    try {
+      await apiRequest<void>(`/api/accounts/${account.id}`, { method: 'DELETE' })
+      setAccounts((current) => current.filter((candidate) => candidate.id !== account.id))
+      setNotice(`${account.displayName}'s account and planner data were deleted.`)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not remove account')
+    } finally {
+      setDeletingAccountId(null)
     }
   }
 
@@ -497,6 +527,11 @@ function App() {
               <span className="profile-name">{user?.displayName}<small>@{user?.username}</small></span>
             </div>
           )}
+          {!isTvMode && (
+            <a className="button button-quiet account-management-link" href="/accounts">
+              Manage accounts
+            </a>
+          )}
           {!isTvMode && <button className="button button-quiet sign-out-button" type="button" onClick={() => void signOut()}>Sign out</button>}
         </div>
       </header>
@@ -578,6 +613,42 @@ function App() {
             Streaks are counted through yesterday in the household timezone. Only days with at least one target count;
             a no-target day breaks both streaks.
           </p>
+        </section>
+      ) : isAccountManagement ? (
+        <section className="account-management" aria-labelledby="account-management-title">
+          <p className="eyebrow">HOUSEHOLD SETTINGS</p>
+          <h1 id="account-management-title">Manage accounts</h1>
+          <p className="account-management-description">
+            Remove accounts that are no longer needed. Deleting an account permanently removes its plans and progress history.
+            You cannot remove your own account.
+          </p>
+          {notice && <p className="success-banner" role="status">{notice}</p>}
+          <div className="account-list" aria-live="polite">
+            {accounts.map((account) => {
+              const isCurrentAccount = account.id === user?.id
+              return (
+                <article className="account-row" key={account.id}>
+                  <span className="avatar" aria-hidden="true">{account.displayName.slice(0, 1).toUpperCase()}</span>
+                  <div className="account-row-identity">
+                    <strong>{account.displayName}{isCurrentAccount ? ' (you)' : ''}</strong>
+                    <span>@{account.username}</span>
+                  </div>
+                  {isCurrentAccount ? (
+                    <span className="account-protected">Your account</span>
+                  ) : (
+                    <button
+                      className="button button-danger"
+                      type="button"
+                      disabled={deletingAccountId === account.id}
+                      onClick={() => void removeAccount(account)}
+                    >
+                      {deletingAccountId === account.id ? 'Removing…' : 'Remove'}
+                    </button>
+                  )}
+                </article>
+              )
+            })}
+          </div>
         </section>
       ) : (
         <>
