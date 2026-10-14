@@ -75,3 +75,20 @@ export interface HouseholdToday {
   timeZone: string
   users: HouseholdUserDay[]
 }
+
+export interface HouseholdCompetitionUser {
+  user: User
+  allTargetsStreak: number
+  atLeastOneStreak: number
+  planned: number
+  completed: number
+  completionPercent: number
+}
+
+export interface HouseholdCompetition {
+  period: 'week' | 'month'
+  startDate: string
+  endDate: string
+  timeZone: string
+  users: HouseholdCompetitionUser[]
+}

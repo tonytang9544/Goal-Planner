@@ -15,7 +15,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, patch, post, put},
 };
-use chrono::{DateTime, Days, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Days, NaiveDate, TimeZone, Utc};
 use chrono_tz::Tz;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/plans/order", put(reorder_plans))
         .route("/api/plans/{id}/completion", patch(set_completion))
         .route("/api/household/today", get(household_today))
+        .route("/api/household/competition", get(household_competition))
         .with_state(state)
 }
 
@@ -160,6 +161,11 @@ struct PlanRange {
     end: String,
 }
 
+#[derive(Deserialize)]
+struct CompetitionQuery {
+    period: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HouseholdToday {
@@ -186,6 +192,27 @@ struct HouseholdTarget {
     due_at: Option<DateTime<Utc>>,
     completed_at: Option<DateTime<Utc>>,
     position: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HouseholdCompetition {
+    period: String,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    time_zone: String,
+    users: Vec<CompetitionUser>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompetitionUser {
+    user: User,
+    all_targets_streak: u32,
+    at_least_one_streak: u32,
+    planned: usize,
+    completed: usize,
+    completion_percent: u32,
 }
 
 #[derive(Clone)]
@@ -630,9 +657,8 @@ async fn reorder_plans(
 }
 
 async fn household_today(State(state): State<AppState>) -> Result<Json<HouseholdToday>, ApiError> {
-    let today = Utc::now()
-        .with_timezone(&state.household_timezone)
-        .date_naive();
+    let now = Utc::now();
+    let today = now.with_timezone(&state.household_timezone).date_naive();
     let rows = sqlx::query(
         "SELECT id, username, display_name, created_at, updated_at FROM users ORDER BY display_name COLLATE NOCASE",
     )
@@ -655,8 +681,9 @@ async fn household_today(State(state): State<AppState>) -> Result<Json<Household
             .iter()
             .filter(|target| target.completed_at.is_some())
             .count();
+        let events = user_history(&state.pool, user.id).await?;
         let (all_targets_streak, at_least_one_streak) =
-            user_streaks(&state.pool, user.id, today, state.household_timezone).await?;
+            user_streaks(&events, today, state.household_timezone)?;
         users.push(HouseholdUserDay {
             user,
             targets,
@@ -672,13 +699,119 @@ async fn household_today(State(state): State<AppState>) -> Result<Json<Household
     }))
 }
 
-async fn user_streaks(
-    pool: &SqlitePool,
-    user_id: Uuid,
+async fn household_competition(
+    State(state): State<AppState>,
+    Query(query): Query<CompetitionQuery>,
+) -> Result<Json<HouseholdCompetition>, ApiError> {
+    let now = Utc::now();
+    let today = now.with_timezone(&state.household_timezone).date_naive();
+    let (start_date, end_date) = match query.period.as_str() {
+        "week" => (
+            today - Days::new(u64::from(today.weekday().num_days_from_monday())),
+            today + Days::new(u64::from(6 - today.weekday().num_days_from_monday())),
+        ),
+        "month" => {
+            let start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+                .ok_or_else(ApiError::internal)?;
+            let next_month = if today.month() == 12 {
+                NaiveDate::from_ymd_opt(today.year() + 1, 1, 1)
+            } else {
+                NaiveDate::from_ymd_opt(today.year(), today.month() + 1, 1)
+            }
+            .ok_or_else(ApiError::internal)?;
+            (start, next_month - Days::new(1))
+        }
+        _ => {
+            return Err(ApiError::bad_request(
+                "Competition period must be week or month",
+            ));
+        }
+    };
+
+    let rows = sqlx::query(
+        "SELECT id, username, display_name, created_at, updated_at FROM users ORDER BY display_name COLLATE NOCASE",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let mut users = Vec::with_capacity(rows.len());
+    for row in rows {
+        let user = user_from_row(&row)?;
+        let events = user_history(&state.pool, user.id).await?;
+        let (all_targets_streak, at_least_one_streak) =
+            user_streaks(&events, today, state.household_timezone)?;
+        let (planned, completed) = completion_totals_for_period(
+            &events,
+            start_date,
+            end_date,
+            today,
+            state.household_timezone,
+            now,
+        )?;
+        let completion_percent = if planned == 0 {
+            0
+        } else {
+            u32::try_from(completed * 100 / planned).map_err(|_| ApiError::internal())?
+        };
+        users.push(CompetitionUser {
+            user,
+            all_targets_streak,
+            at_least_one_streak,
+            planned,
+            completed,
+            completion_percent,
+        });
+    }
+
+    Ok(Json(HouseholdCompetition {
+        period: query.period,
+        start_date,
+        end_date,
+        time_zone: state.household_timezone.name().to_owned(),
+        users,
+    }))
+}
+
+fn completion_totals_for_period(
+    events: &[HistoricalEvent],
+    start_date: NaiveDate,
+    end_date: NaiveDate,
     today: NaiveDate,
     timezone: Tz,
-) -> Result<(u32, u32), ApiError> {
-    let cutoff_day = today - Days::new(STREAK_LOOKBACK_DAYS);
+    now: DateTime<Utc>,
+) -> Result<(usize, usize), ApiError> {
+    let mut current_by_item: HashMap<&str, &HistoricalSnapshot> = HashMap::new();
+    let mut event_index = 0;
+    let mut planned = 0;
+    let mut completed = 0;
+    let mut day = start_date;
+    let last_scored_day = end_date.min(today);
+
+    while day <= last_scored_day {
+        let day_end = if day < today {
+            start_of_local_day(day.succ_opt().ok_or_else(ApiError::internal)?, timezone)?
+        } else {
+            now
+        };
+        while event_index < events.len() && events[event_index].recorded_at < day_end {
+            let event = &events[event_index];
+            current_by_item.insert(&event.item_id, &event.snapshot);
+            event_index += 1;
+        }
+        for snapshot in current_by_item.values() {
+            if snapshot.date == day && !snapshot.deleted {
+                planned += 1;
+                if snapshot.completed {
+                    completed += 1;
+                }
+            }
+        }
+        day = day.succ_opt().ok_or_else(ApiError::internal)?;
+    }
+
+    Ok((planned, completed))
+}
+
+async fn user_history(pool: &SqlitePool, user_id: Uuid) -> Result<Vec<HistoricalEvent>, ApiError> {
     let rows = sqlx::query(
         "SELECT item_id, date, completed_at, is_deleted, recorded_at FROM plan_item_history WHERE user_id = ? ORDER BY recorded_at, id",
     )
@@ -689,6 +822,15 @@ async fn user_streaks(
         .iter()
         .map(history_from_row)
         .collect::<Result<Vec<_>, _>>()?;
+    Ok(events)
+}
+
+fn user_streaks(
+    events: &[HistoricalEvent],
+    today: NaiveDate,
+    timezone: Tz,
+) -> Result<(u32, u32), ApiError> {
+    let cutoff_day = today - Days::new(STREAK_LOOKBACK_DAYS);
     let mut current_by_item: HashMap<String, HistoricalSnapshot> = HashMap::new();
     let mut event_index = 0;
     let mut daily_results = HashMap::new();
@@ -1054,6 +1196,50 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
         .split(';')
         .filter_map(|part| part.trim().split_once('='))
         .find_map(|(name, value)| (name == SESSION_COOKIE).then(|| value.to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(
+        item_id: &str,
+        date: &str,
+        completed: bool,
+        deleted: bool,
+        recorded_at: &str,
+    ) -> HistoricalEvent {
+        HistoricalEvent {
+            item_id: item_id.to_owned(),
+            snapshot: HistoricalSnapshot {
+                date: NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap(),
+                completed,
+                deleted,
+            },
+            recorded_at: recorded_at.parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn period_completion_freezes_closed_days_and_keeps_today_live() {
+        let events = vec![
+            event("first", "2026-10-12", false, false, "2026-10-12T10:00:00Z"),
+            event("first", "2026-10-12", true, false, "2026-10-13T08:00:00Z"),
+            event("second", "2026-10-13", true, false, "2026-10-13T10:00:00Z"),
+            event("second", "2026-10-13", false, true, "2026-10-14T00:01:00Z"),
+            event("third", "2026-10-14", false, false, "2026-10-14T09:00:00Z"),
+            event("third", "2026-10-14", true, false, "2026-10-14T11:00:00Z"),
+        ];
+        let start = NaiveDate::parse_from_str("2026-10-12", "%Y-%m-%d").unwrap();
+        let end = NaiveDate::parse_from_str("2026-10-18", "%Y-%m-%d").unwrap();
+        let today = NaiveDate::parse_from_str("2026-10-14", "%Y-%m-%d").unwrap();
+        let now = "2026-10-14T12:00:00Z".parse().unwrap();
+
+        let totals =
+            completion_totals_for_period(&events, start, end, today, chrono_tz::UTC, now).unwrap();
+
+        assert_eq!(totals, (3, 2));
+    }
 }
 
 fn new_session_token() -> (String, String) {

@@ -1007,6 +1007,7 @@
 
 .tv-mode .header-brand-date {
   flex: 1;
+  gap: clamp(12px, 1.5vw, 28px);
 }
 
 .tv-mode .brand-tagline {
@@ -1034,6 +1035,157 @@
 
 .tv-summary h1 {
   font-size: clamp(36px, 4vw, 72px);
+}
+
+.tv-period-switcher {
+  display: flex;
+  width: fit-content;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid #e6eae1;
+  border-radius: 11px;
+  background: #f6f8f4;
+}
+
+.tv-period-switcher button {
+  min-height: 42px;
+  padding: 0 clamp(15px, 1.5vw, 28px);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #657268;
+  font: inherit;
+  font-size: clamp(14px, 1.1vw, 21px);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tv-view-toggle {
+  min-height: clamp(40px, 3vw, 56px);
+  padding: 0 clamp(14px, 1.4vw, 26px);
+  border-color: #dce5db;
+  font-size: clamp(13px, 1vw, 19px);
+  white-space: nowrap;
+}
+
+.tv-view-toggle:focus-visible,
+.tv-period-switcher button:focus-visible {
+  outline: 3px solid #88a993;
+  outline-offset: 2px;
+}
+
+.tv-competition {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: clamp(22px, 2.5vw, 46px);
+  border: 1px solid #e6eae1;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgb(52 68 56 / 4%);
+}
+
+.tv-competition-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: clamp(20px, 2vw, 36px);
+}
+
+.tv-competition-header h2 {
+  margin: 0;
+  color: #35473c;
+  font-size: clamp(25px, 2.5vw, 44px);
+  letter-spacing: -0.035em;
+}
+
+.tv-competition-header p {
+  margin: 7px 0 0;
+  color: #879188;
+  font-size: clamp(13px, 1vw, 19px);
+}
+
+.tv-period-switcher button {
+  min-height: 38px;
+  font-size: clamp(12px, 0.95vw, 18px);
+}
+
+.tv-leaderboard {
+  display: grid;
+  gap: clamp(10px, 1vw, 18px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tv-leaderboard-row {
+  display: grid;
+  grid-template-columns: auto minmax(170px, 0.8fr) minmax(220px, 1.2fr);
+  align-items: center;
+  gap: clamp(14px, 1.5vw, 28px);
+  min-height: 82px;
+  padding: clamp(14px, 1.5vw, 26px);
+  border: 1px solid #edf0e9;
+  border-radius: 12px;
+  background: #fafbf8;
+}
+
+.tv-rank {
+  display: grid;
+  width: clamp(38px, 3vw, 56px);
+  height: clamp(38px, 3vw, 56px);
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f1e5;
+  color: #426c58;
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-rank-user {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tv-rank-user strong {
+  overflow: hidden;
+  color: #425347;
+  font-size: clamp(17px, 1.5vw, 27px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tv-rank-user span,
+.tv-completion-label {
+  color: #879188;
+  font-size: clamp(12px, 0.95vw, 18px);
+}
+
+.tv-completion-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tv-completion-label strong {
+  flex: 0 0 auto;
+  color: #426c58;
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-completion .progress-track {
+  margin-bottom: 0;
+}
+
+.tv-empty-competition {
+  padding: 32px 12px;
+  color: #879188;
+  font-size: clamp(14px, 1.1vw, 21px);
+  text-align: center;
 }
 
 .tv-household-grid {
@@ -1289,6 +1441,10 @@
     padding-bottom: 8px;
     overscroll-behavior-x: contain;
   }
+
+  .tv-leaderboard-row {
+    grid-template-columns: auto minmax(140px, 0.8fr) minmax(190px, 1.2fr);
+  }
 }
 
 @media (max-width: 560px) {
@@ -1352,6 +1508,19 @@
 
   .tv-household-grid {
     gap: 11px;
+  }
+
+  .tv-competition-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tv-leaderboard-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tv-completion {
+    grid-column: 2;
   }
 
   .tv-user-card {

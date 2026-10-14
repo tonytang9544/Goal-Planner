@@ -54,14 +54,16 @@ Raspberry Pi 2
 - Add schema migrations and short-interval polling so changes and progress from other devices become visible.
 - Preserve enough timestamped plan and completion history to calculate daily totals and consecutive streaks consistently across edits and devices.
 
-### 4. Define and implement the competition chart
+### 4. Define and implement a competition page for the TV
 
 - Use a transparent measure of follow-through, such as the percentage of planned items completed by their due day within a selected week or month.
 - Define how rescheduled, deleted, overdue, and newly added items affect the score before implementing rankings; make the rules visible to all household users.
 - Calculate an all-targets-cleared streak only for target-days when the user completed every target, and an at-least-one-completed streak only when at least one target was completed. Count consecutive target-days; a day with no targets breaks either streak and never counts as a perfect day.
 - Calculate each day in the household timezone and retain the plan/completion history needed to avoid later edits silently rewriting past streak results. Document how same-day additions, removals, and rescheduling affect that day's target set.
-- Avoid rewarding raw task volume so users are not encouraged to create many trivial items. Show the underlying completed and planned totals alongside percentages.
-- Show household rankings by week and month, with accessible charts and a non-chart summary.
+- Rank the competition leaderboard by the existing all-targets-cleared streak, then the at-least-one streak; show weekly or monthly completion percentage and its completed/planned totals as context, not as a task-volume bonus.
+- For completion percentages, count the target set and completion state as recorded at the end of each household-local day. Subsequent edits do not change a closed day's score; same-day additions, removals, and rescheduling made before the day closes affect that day's target set. Exclude future days and include today's live progress.
+- Make the TV route a read-only presentation with two separate views: today's household targets and the competition chart. Provide clear TV-friendly controls to toggle back and forth without leaving the TV route; keep today's targets as the default view.
+- Show household rankings by week and month on the competition view, with accessible charts and a non-chart summary.
 - Keep personal notes private. The TV page is an intentional shared surface for all users' daily target titles and completion state; limit it to that day's targets and the progress/streak information, without exposing notes or unrelated future plans.
 
 ### 5. Test the important behaviors

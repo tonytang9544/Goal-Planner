@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { PlanItemEditor } from './components/PlanItemEditor'
-import type { HouseholdToday, PlanItem, User } from './types/planner'
+import type { HouseholdCompetition, HouseholdToday, PlanItem, User } from './types/planner'
 import './App.css'
 
 type PlannerView = 'month' | 'week' | 'day'
@@ -134,6 +134,9 @@ function App() {
   const [accounts, setAccounts] = useState<User[]>([])
   const [user, setUser] = useState<User | null>(null)
   const [household, setHousehold] = useState<HouseholdToday | null>(null)
+  const [competition, setCompetition] = useState<HouseholdCompetition | null>(null)
+  const [tvPage, setTvPage] = useState<'targets' | 'competition'>('targets')
+  const [competitionPeriod, setCompetitionPeriod] = useState<'week' | 'month'>('week')
   const [householdTimeZone, setHouseholdTimeZone] = useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone,
   )
@@ -211,6 +214,13 @@ function App() {
     setHouseholdTimeZone(summary.timeZone)
   }, [])
 
+  const refreshCompetition = useCallback(async () => {
+    const summary = await apiRequest<HouseholdCompetition>(
+      `/api/household/competition?period=${competitionPeriod}`,
+    )
+    setCompetition(summary)
+  }, [competitionPeriod])
+
   const refreshAccounts = useCallback(async () => {
     const result = await apiRequest<User[]>('/api/accounts')
     setAccounts(result)
@@ -236,6 +246,7 @@ function App() {
       try {
         if (isTvMode) {
           await refreshHousehold()
+          if (tvPage === 'competition') await refreshCompetition()
         } else if (isAccountManagement) {
           await refreshAccounts()
         } else {
@@ -260,7 +271,7 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [authStatus, isAccountManagement, isTvMode, refreshPlans, refreshHousehold, refreshAccounts])
+  }, [authStatus, isAccountManagement, isTvMode, tvPage, refreshPlans, refreshHousehold, refreshAccounts, refreshCompetition])
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -410,6 +421,16 @@ function App() {
       : view === 'week'
         ? `${shortDateFormatter.format(weekStart)} – ${shortDateFormatter.format(weekDays[6])}`
         : longDateFormatter.format(selectedDateValue)
+  const rankedCompetitionUsers = [...(competition?.users ?? [])].sort((first, second) =>
+    second.allTargetsStreak - first.allTargetsStreak
+    || second.atLeastOneStreak - first.atLeastOneStreak
+    || first.user.displayName.localeCompare(second.user.displayName),
+  )
+  const competitionRangeLabel = competition
+    ? competition.period === 'week'
+      ? `${shortDateFormatter.format(dateFromKey(competition.startDate))} – ${shortDateFormatter.format(dateFromKey(competition.endDate))}`
+      : monthFormatter.format(dateFromKey(competition.startDate))
+    : ''
 
   if (!isTvMode && authStatus === 'loading') {
     return <main className="auth-shell" aria-live="polite">Loading your planner…</main>
@@ -521,6 +542,16 @@ function App() {
           )}
         </div>
         <div className="header-actions">
+          {isTvMode && (
+            <button
+              className="button button-quiet tv-view-toggle"
+              type="button"
+              aria-label={`Show ${tvPage === 'targets' ? 'competition' : "today's targets"}`}
+              onClick={() => setTvPage((page) => page === 'targets' ? 'competition' : 'targets')}
+            >
+              {tvPage === 'targets' ? 'Competition' : "Today's targets"}
+            </button>
+          )}
           {!isTvMode && (
             <div className="profile-chip" aria-label={`Signed in as ${user?.displayName ?? ''}`}>
               <span className="avatar" aria-hidden="true">{user?.displayName.slice(0, 1).toUpperCase()}</span>
@@ -538,8 +569,10 @@ function App() {
 
       {isTvMode ? (
         <section className="tv-summary" aria-labelledby="tv-title">
-          <div className="tv-household-grid">
-            {(household?.users ?? []).map((member) => {
+          {tvPage === 'targets' ? (
+            <>
+              <div className="tv-household-grid">
+                {(household?.users ?? []).map((member) => {
               const progress = member.targets.length
                 ? Math.round((member.completed / member.targets.length) * 100)
                 : 0
@@ -607,12 +640,72 @@ function App() {
                   </div>
                 </article>
               )
-            })}
-          </div>
-          <p className="tv-streak-rule">
-            Streaks are counted through yesterday in the household timezone. Only days with at least one target count;
-            a no-target day breaks both streaks.
-          </p>
+                })}
+              </div>
+              <p className="tv-streak-rule">
+                Streaks are counted through yesterday in the household timezone. Only days with at least one target count;
+                a no-target day breaks both streaks.
+              </p>
+            </>
+          ) : (
+            <div className="tv-competition">
+              <header className="tv-competition-header">
+                <div>
+                  <h2>Household competition</h2>
+                  <p>{competitionRangeLabel || 'Loading scores…'} · ranked by current streaks</p>
+                </div>
+                <div className="tv-period-switcher" role="group" aria-label="Competition period">
+                  {(['week', 'month'] as const).map((period) => (
+                    <button
+                      key={period}
+                      type="button"
+                      aria-pressed={competitionPeriod === period}
+                      onClick={() => setCompetitionPeriod(period)}
+                    >
+                      {period === 'week' ? 'This week' : 'This month'}
+                    </button>
+                  ))}
+                </div>
+              </header>
+              {rankedCompetitionUsers.length ? (
+                <ol className="tv-leaderboard">
+                  {rankedCompetitionUsers.map((entry, index) => (
+                    <li className="tv-leaderboard-row" key={entry.user.id}>
+                      <span className="tv-rank" aria-label={`Rank ${index + 1}`}>{index + 1}</span>
+                      <div className="tv-rank-user">
+                        <strong>{entry.user.displayName}</strong>
+                        <span>
+                          {entry.allTargetsStreak} all-cleared · {entry.atLeastOneStreak} any-done streak
+                        </span>
+                      </div>
+                      <div className="tv-completion">
+                        <div className="tv-completion-label">
+                          <span>{entry.completed} / {entry.planned} targets completed</span>
+                          <strong>{entry.completionPercent}%</strong>
+                        </div>
+                        <div
+                          className="progress-track"
+                          role="progressbar"
+                          aria-label={`${entry.user.displayName}'s ${competitionPeriod} completion`}
+                          aria-valuenow={entry.completionPercent}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <span style={{ width: `${entry.completionPercent}%` }} />
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="tv-empty-competition">No household accounts to rank yet.</p>
+              )}
+              <p className="tv-streak-rule">
+                Ranked by all-targets-cleared streak, then at-least-one streak. Completion totals cover target-days in the
+                selected period; closed days keep their end-of-day score, while today is live.
+              </p>
+            </div>
+          )}
         </section>
       ) : isAccountManagement ? (
         <section className="account-management" aria-labelledby="account-management-title">
