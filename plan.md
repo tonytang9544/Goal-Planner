@@ -36,7 +36,11 @@ Raspberry Pi 2
 - Let users open a week to see its seven days, then open a day to add, edit, reorder, complete, or remove planned items.
 - Support useful planner details such as title, optional notes, due time, and completion status.
 - Make it straightforward to move an item to another day and to navigate between months, weeks, and days.
-- Design responsive views for phones and laptops, plus a readable TV presentation mode for household summaries.
+- Design responsive views for phones and laptops, plus a read-only TV presentation page for the whole household.
+- On the TV page, show today's target list for every household user: each person's name, target titles, due times when set, completion state, and completed/total count. Keep private notes off the shared display.
+- Show a per-user daily progress bar and separate streak counters for (1) consecutive target-days when every target was completed and (2) consecutive target-days when at least one target was completed.
+- Define a target-day as a local calendar day with at least one target. A day with no targets does not increase a streak and breaks a consecutive target-day streak; display this rule so an empty day is not mistaken for a completed day.
+- Use one configured household timezone for day boundaries, due dates, and streak calculations. Mark today's date clearly, and refresh the shared display periodically so it stays current.
 - Include keyboard-accessible controls and clear empty states for days with no plans.
 
 ### 3. Add accounts, API, and persistence
@@ -47,14 +51,17 @@ Raspberry Pi 2
 - Provide REST endpoints for accounts, sessions, plans, completion updates, and household progress summaries.
 - Validate inputs and persist changes in SQLite using transactions where multiple records must change together.
 - Add schema migrations and short-interval polling so changes and progress from other devices become visible.
+- Preserve enough timestamped plan and completion history to calculate daily totals and consecutive streaks consistently across edits and devices.
 
 ### 4. Define and implement the competition chart
 
 - Use a transparent measure of follow-through, such as the percentage of planned items completed by their due day within a selected week or month.
 - Define how rescheduled, deleted, overdue, and newly added items affect the score before implementing rankings; make the rules visible to all household users.
+- Calculate an all-targets-cleared streak only for target-days when the user completed every target, and an at-least-one-completed streak only when at least one target was completed. Count consecutive target-days; a day with no targets breaks either streak and never counts as a perfect day.
+- Calculate each day in the household timezone and retain the plan/completion history needed to avoid later edits silently rewriting past streak results. Document how same-day additions, removals, and rescheduling affect that day's target set.
 - Avoid rewarding raw task volume so users are not encouraged to create many trivial items. Show the underlying completed and planned totals alongside percentages.
 - Show household rankings by week and month, with accessible charts and a non-chart summary.
-- Keep personal plan details private and let the chart share only the agreed progress totals and scores.
+- Keep personal notes private. The TV page is an intentional shared surface for all users' daily target titles and completion state; limit it to that day's targets and the progress/streak information, without exposing notes or unrelated future plans.
 
 ### 5. Test the important behaviors
 
@@ -75,4 +82,4 @@ Raspberry Pi 2
 
 ## Suggested MVP scope
 
-Start with account sign-in, a user's month/week/day views, personal daily items with completion, and a weekly/monthly household progress chart. Keep detailed plans private, make the scoring rules explicit, and verify that the app runs comfortably on the Pi before adding reminders, recurring plans, or internet access.
+Start with account sign-in, a user's month/week/day views, personal daily items with completion, and a TV household page showing today's targets and the two streak measures for every user. Keep notes private, make the shared display and scoring rules explicit, and verify that the app runs comfortably on the Pi before adding reminders, recurring plans, or internet access.

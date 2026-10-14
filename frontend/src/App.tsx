@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PlanItemEditor } from './components/PlanItemEditor'
 import type { PlanItem } from './types/planner'
 import './App.css'
@@ -7,7 +7,13 @@ type PlannerView = 'month' | 'week' | 'day'
 
 const currentUserId = 'local-user'
 const currentUserName = 'Alex Morgan'
+const householdUsers = [
+  { id: currentUserId, displayName: currentUserName, initials: 'A' },
+  { id: 'user-jamie', displayName: 'Jamie Lee', initials: 'J' },
+  { id: 'user-sam', displayName: 'Sam Patel', initials: 'S' },
+]
 const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const householdTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
 const longDateFormatter = new Intl.DateTimeFormat(undefined, {
   weekday: 'long',
@@ -31,6 +37,11 @@ function currentTimestamp(): string {
   return new Date().toISOString()
 }
 
+function localTimeAt(date: Date, hour: number, minute: number): string {
+  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute)
+  return value.toISOString()
+}
+
 function dateFromKey(value: string): Date {
   const [year, month, day] = value.split('-').map(Number)
   return new Date(year, month - 1, day)
@@ -47,36 +58,107 @@ function startOfWeek(date: Date): Date {
   return addDays(date, -offset)
 }
 
-function createSeedItems(): PlanItem[] {
-  const now = new Date()
-  const createdAt = now.toISOString()
-  const entries = [
-    { offset: -1, title: 'Take out the recycling', notes: 'Glass and cardboard too.' , completed: true },
-    { offset: 0, title: 'Water the herbs', notes: 'The basil is looking thirsty.', completed: true },
-    { offset: 0, title: 'Pick up groceries', notes: 'Milk, oats, and fresh fruit.', completed: false },
-    { offset: 1, title: 'Go for an evening walk', notes: null, completed: false },
-    { offset: 3, title: 'Call Mum', notes: 'Ask how the garden is doing.', completed: false },
-    { offset: 5, title: 'Tidy the entryway', notes: null, completed: false },
-  ]
+function createSeedItems(today: Date): PlanItem[] {
+  const createdAt = today.toISOString()
+  const history = [
+    {
+      userId: currentUserId,
+      days: ['all', 'all', 'some', 'some', 'none', 'all', 'all'],
+      titles: ['Water the plants', 'Stretch for ten minutes'],
+    },
+    {
+      userId: 'user-jamie',
+      days: ['some', 'all', 'some', 'all', 'some', 'none', 'all'],
+      titles: ['Read a chapter', 'Take a lunch break'],
+    },
+    {
+      userId: 'user-sam',
+      days: ['all', 'empty', 'all', 'some', 'all', 'all', 'some'],
+      titles: ['Morning walk', 'Practice guitar'],
+    },
+  ] as const
 
-  return entries.map((entry, index) => ({
-    id: `sample-plan-${index + 1}`,
+  const pastItems = history.flatMap(({ userId, days, titles }) =>
+    days.flatMap((status, historyIndex) => {
+      if (status === 'empty') return []
+      const date = addDays(today, -(historyIndex + 1))
+      const dayItems = status === 'all'
+        ? titles.map(() => true)
+        : status === 'some'
+          ? [true, false]
+          : [false, false]
+      return titles.slice(0, dayItems.length).map((title, itemIndex) => ({
+        id: `history-${userId}-${historyIndex}-${itemIndex}`,
+        userId,
+        date: dateKey(date),
+        title,
+        notes: null,
+        dueAt: null,
+        position: itemIndex,
+        completedAt: dayItems[itemIndex] ? localTimeAt(date, 18, 0) : null,
+        createdAt,
+        updatedAt: createdAt,
+      }))
+    }),
+  )
+
+  const todayEntries = [
+    { userId: currentUserId, title: 'Water the herbs', notes: 'The basil is looking thirsty.', hour: 9, minute: 0, completed: true },
+    { userId: currentUserId, title: 'Pick up groceries', notes: 'Milk, oats, and fresh fruit.', hour: 17, minute: 30, completed: false },
+    { userId: 'user-jamie', title: 'Finish the book chapter', notes: null, hour: 20, minute: 0, completed: false },
+    { userId: 'user-jamie', title: 'Prepare lunch for tomorrow', notes: null, hour: 21, minute: 0, completed: true },
+    { userId: 'user-sam', title: 'Take a walk after work', notes: null, hour: 18, minute: 0, completed: true },
+    { userId: 'user-sam', title: 'Water the balcony plants', notes: null, hour: 19, minute: 0, completed: true },
+  ]
+  const todayItems = todayEntries.map((entry, index) => ({
+    id: `today-plan-${index + 1}`,
+    userId: entry.userId,
+    date: dateKey(today),
+    title: entry.title,
+    notes: entry.notes,
+    dueAt: localTimeAt(today, entry.hour, entry.minute),
+    position: todayEntries.filter((item) => item.userId === entry.userId).findIndex((item) => item === entry),
+    completedAt: entry.completed ? localTimeAt(today, Math.max(8, entry.hour - 1), entry.minute) : null,
+    createdAt,
+    updatedAt: createdAt,
+  }))
+
+  const alexFutureEntries = [
+    { offset: 1, title: 'Go for an evening walk', notes: null },
+    { offset: 3, title: 'Call Mum', notes: 'Ask how the garden is doing.' },
+    { offset: 5, title: 'Tidy the entryway', notes: null },
+  ].map((entry, index) => ({
+    id: `future-plan-${index + 1}`,
     userId: currentUserId,
-    date: dateKey(addDays(now, entry.offset)),
+    date: dateKey(addDays(today, entry.offset)),
     title: entry.title,
     notes: entry.notes,
     dueAt: null,
     position: index,
-    completedAt: entry.completed ? createdAt : null,
+    completedAt: null,
     createdAt,
     updatedAt: createdAt,
   }))
+
+  return [...pastItems, ...todayItems, ...alexFutureEntries]
 }
 
 function itemsForDate(items: PlanItem[], date: string): PlanItem[] {
   return items
     .filter((item) => item.date === date)
     .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt))
+}
+
+function streakLength(items: PlanItem[], userId: string, today: string, predicate: (dayItems: PlanItem[]) => boolean): number {
+  let streak = 0
+  let date = addDays(dateFromKey(today), -1)
+
+  while (true) {
+    const dayItems = itemsForDate(items.filter((item) => item.userId === userId), dateKey(date))
+    if (dayItems.length === 0 || !predicate(dayItems)) return streak
+    streak += 1
+    date = addDays(date, -1)
+  }
 }
 
 function PlannerItem({
@@ -130,23 +212,50 @@ function PlannerItem({
 }
 
 function App() {
-  const [today] = useState(() => dateKey(new Date()))
-  const [items, setItems] = useState(createSeedItems)
-  const [selectedDate, setSelectedDate] = useState(today)
+  const [clock, setClock] = useState(() => new Date())
+  const [items, setItems] = useState(() => createSeedItems(clock))
+  const initialToday = dateKey(clock)
+  const [selectedDate, setSelectedDate] = useState(initialToday)
   const [view, setView] = useState<PlannerView>('month')
   const [isTvMode, setIsTvMode] = useState(false)
   const [editingItem, setEditingItem] = useState<PlanItem | null | undefined>(undefined)
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const today = dateKey(clock)
   const selectedDateValue = dateFromKey(selectedDate)
   const monthStart = new Date(selectedDateValue.getFullYear(), selectedDateValue.getMonth(), 1)
   const monthGridStart = startOfWeek(monthStart)
   const monthDays = Array.from({ length: 42 }, (_, index) => addDays(monthGridStart, index))
   const weekStart = startOfWeek(selectedDateValue)
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
-  const selectedItems = itemsForDate(items, selectedDate)
+  const personalItems = items.filter((item) => item.userId === currentUserId)
+  const selectedItems = itemsForDate(personalItems, selectedDate)
   const completedCount = selectedItems.filter((item) => item.completedAt).length
-  const todayItems = itemsForDate(items, today)
-  const todayCompletedCount = todayItems.filter((item) => item.completedAt).length
+  const householdProgress = householdUsers.map((user) => {
+    const targets = itemsForDate(items.filter((item) => item.userId === user.id), today)
+    const completed = targets.filter((item) => item.completedAt).length
+    return {
+      ...user,
+      targets,
+      completed,
+      allTargetsStreak: streakLength(
+        items,
+        user.id,
+        today,
+        (dayItems) => dayItems.every((item) => item.completedAt !== null),
+      ),
+      atLeastOneStreak: streakLength(
+        items,
+        user.id,
+        today,
+        (dayItems) => dayItems.some((item) => item.completedAt !== null),
+      ),
+    }
+  })
 
   function navigatePeriod(direction: -1 | 1) {
     const nextDate = new Date(selectedDateValue)
@@ -168,7 +277,7 @@ function App() {
         ? current.find((item) => item.id === editingItem.id)
         : undefined
       const destinationItems = current.filter(
-        (item) => item.date === values.date && item.id !== existing?.id,
+        (item) => item.userId === currentUserId && item.date === values.date && item.id !== existing?.id,
       )
       const updatedItem: PlanItem = {
         ...values,
@@ -182,9 +291,9 @@ function App() {
         ...current.filter((item) => item.id !== existing?.id),
         updatedItem,
       ].map((item) => {
-        if (item.date === existing?.date && item.id !== updatedItem.id) {
+        if (item.userId === currentUserId && item.date === existing?.date && item.id !== updatedItem.id) {
           const remaining = itemsForDate(
-            current.filter((other) => other.date === existing.date && other.id !== existing.id),
+            current.filter((other) => other.userId === currentUserId && other.date === existing.date && other.id !== existing.id),
             existing.date,
           )
           const oldPosition = remaining.findIndex((other) => other.id === item.id)
@@ -213,11 +322,11 @@ function App() {
       current
         .filter((candidate) => candidate.id !== item.id)
         .map((candidate) =>
-          candidate.date === item.date
+          candidate.userId === item.userId && candidate.date === item.date
             ? {
                 ...candidate,
                 position: itemsForDate(
-                  current.filter((other) => other.date === item.date && other.id !== item.id),
+                  current.filter((other) => other.userId === item.userId && other.date === item.date && other.id !== item.id),
                   item.date,
                 ).findIndex((other) => other.id === candidate.id),
               }
@@ -228,7 +337,10 @@ function App() {
 
   function reorderItem(item: PlanItem, direction: -1 | 1) {
     setItems((current) => {
-      const dayItems = itemsForDate(current, item.date)
+      const dayItems = itemsForDate(
+        current.filter((candidate) => candidate.userId === item.userId),
+        item.date,
+      )
       const index = dayItems.findIndex((candidate) => candidate.id === item.id)
       const targetIndex = Math.max(0, Math.min(index + direction, dayItems.length - 1))
       if (index === targetIndex) return current
@@ -237,7 +349,7 @@ function App() {
       reordered.splice(targetIndex, 0, moved)
       const positions = new Map(reordered.map((candidate, position) => [candidate.id, position]))
       return current.map((candidate) =>
-        positions.has(candidate.id)
+        candidate.userId === item.userId && positions.has(candidate.id)
           ? { ...candidate, position: positions.get(candidate.id)! }
           : candidate,
       )
@@ -259,10 +371,20 @@ function App() {
   return (
     <main className={`app-shell${isTvMode ? ' tv-mode' : ''}`}>
       <header className="app-header">
-        <a className="brand" href="/" aria-label="Home planner">
-          <span className="brand-mark" aria-hidden="true">h</span>
-          <span className="brand-name">Home planner</span>
-        </a>
+        <div className="header-brand-date">
+          <a className="brand" href="/" aria-label="Home planner">
+            <span className="brand-mark" aria-hidden="true">h</span>
+            <span className="brand-copy">
+              <span className="brand-name">Home planner</span>
+              {isTvMode && <span className="brand-tagline">A little progress goes a long way.</span>}
+            </span>
+          </a>
+          {isTvMode && (
+            <h1 className="tv-date" id="tv-title" aria-live="polite">
+              {longDateFormatter.format(dateFromKey(today))}
+            </h1>
+          )}
+        </div>
         <div className="header-actions">
           {!isTvMode && (
             <div className="profile-chip" aria-label={`Signed in as ${currentUserName}`}>
@@ -283,42 +405,81 @@ function App() {
 
       {isTvMode ? (
         <section className="tv-summary" aria-labelledby="tv-title">
-          <p className="eyebrow">HOUSEHOLD TODAY</p>
-          <h1 id="tv-title">{longDateFormatter.format(dateFromKey(today))}</h1>
-          <p className="tv-greeting">A little progress goes a long way. <span>Preview profile</span></p>
-          <div className="tv-progress">
-            <div className="tv-progress-copy">
-              <span className="avatar avatar-large" aria-hidden="true">A</span>
-              <div>
-                <strong>{currentUserName}</strong>
-                <span>{todayCompletedCount} of {todayItems.length} plans complete</span>
-              </div>
-            </div>
-            <div
-              className="progress-track"
-              role="progressbar"
-              aria-label={`${currentUserName}'s plans completed today`}
-              aria-valuenow={todayItems.length ? Math.round(todayCompletedCount / todayItems.length * 100) : 0}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <span
-                style={{
-                  width: `${todayItems.length ? (todayCompletedCount / todayItems.length) * 100 : 0}%`,
-                }}
-              />
-            </div>
+          <div className="tv-household-grid">
+            {householdProgress.map((user) => {
+              const progress = user.targets.length
+                ? Math.round((user.completed / user.targets.length) * 100)
+                : 0
+              return (
+                <article className="tv-user-card" key={user.id} aria-labelledby={`tv-user-${user.id}`}>
+                  <header className="tv-user-header">
+                    <span className="avatar avatar-large" aria-hidden="true">{user.initials}</span>
+                    <div className="tv-user-identity">
+                      <h2 id={`tv-user-${user.id}`}>{user.displayName}</h2>
+                      <span>
+                        {user.targets.length
+                          ? `${user.completed} of ${user.targets.length} targets complete`
+                          : 'No targets today'}
+                      </span>
+                    </div>
+                    <strong className="tv-percentage">{progress}%</strong>
+                  </header>
+                  <div
+                    className="progress-track"
+                    role="progressbar"
+                    aria-label={`${user.displayName}'s targets completed today`}
+                    aria-valuenow={progress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <span style={{ width: `${progress}%` }} />
+                  </div>
+
+                  <div className="streak-grid" aria-label={`${user.displayName}'s streaks through yesterday`}>
+                    <div className="streak-tile">
+                      <span className="streak-icon" aria-hidden="true">✦</span>
+                      <div>
+                        <strong>{user.allTargetsStreak} <small>{user.allTargetsStreak === 1 ? 'day' : 'days'}</small></strong>
+                        <span>All targets cleared</span>
+                      </div>
+                    </div>
+                    <div className="streak-tile">
+                      <span className="streak-icon streak-icon-soft" aria-hidden="true">↗</span>
+                      <div>
+                        <strong>{user.atLeastOneStreak} <small>{user.atLeastOneStreak === 1 ? 'day' : 'days'}</small></strong>
+                        <span>At least one done</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="tv-target-list">
+                    <h3>Today's targets</h3>
+                    {user.targets.length ? user.targets.map((item) => (
+                      <div className={`tv-plan-row${item.completedAt ? ' is-completed' : ''}`} key={item.id}>
+                        <span className="tv-check" aria-hidden="true">{item.completedAt ? '✓' : ''}</span>
+                        <span className="tv-target-title">{item.title}</span>
+                        {item.dueAt && (
+                          <time dateTime={item.dueAt}>
+                            {new Intl.DateTimeFormat(undefined, {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              timeZone: householdTimeZone,
+                            }).format(new Date(item.dueAt))}
+                          </time>
+                        )}
+                      </div>
+                    )) : (
+                      <p className="empty-state">No targets today. This is not counted as a completed day.</p>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
           </div>
-          <div className="tv-today-list">
-            {todayItems.length ? todayItems.map((item) => (
-              <div className={`tv-plan-row${item.completedAt ? ' is-completed' : ''}`} key={item.id}>
-                <span className="tv-check" aria-hidden="true">{item.completedAt ? '✓' : ''}</span>
-                <span>{item.title}</span>
-              </div>
-            )) : (
-              <p className="empty-state">No plans for today. Enjoy the open space.</p>
-            )}
-          </div>
+          <p className="tv-streak-rule">
+            Streaks are counted through yesterday in the household timezone. Only days with at least one target count;
+            a no-target day breaks both streaks.
+          </p>
         </section>
       ) : (
         <>
@@ -374,7 +535,7 @@ function App() {
                   <div className="month-grid">
                     {monthDays.map((date) => {
                       const key = dateKey(date)
-                      const dayItems = itemsForDate(items, key)
+                      const dayItems = itemsForDate(personalItems, key)
                       const isOutsideMonth = date.getMonth() !== selectedDateValue.getMonth()
                       return (
                         <button
@@ -411,7 +572,7 @@ function App() {
                 <div className="week-planner">
                   {weekDays.map((date) => {
                     const key = dateKey(date)
-                    const dayItems = itemsForDate(items, key)
+                    const dayItems = itemsForDate(personalItems, key)
                     return (
                       <section className={`week-day${key === today ? ' is-today' : ''}`} key={key}>
                         <button className="week-day-heading" type="button" onClick={() => selectDate(date, 'day')}>

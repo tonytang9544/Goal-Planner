@@ -17,6 +17,13 @@
   border-bottom: 1px solid #e8e9e3;
 }
 
+.header-brand-date {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+
 .brand,
 .header-actions,
 .profile-chip,
@@ -36,6 +43,12 @@
   text-decoration: none;
 }
 
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .brand-mark {
   display: grid;
   width: 36px;
@@ -51,6 +64,13 @@
 .brand-name {
   font-size: 17px;
   letter-spacing: -0.02em;
+}
+
+.brand-tagline {
+  display: none;
+  color: #7b867c;
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .header-actions {
@@ -798,72 +818,105 @@
 }
 
 .tv-mode .app-header {
+  position: relative;
   min-height: 64px;
 }
 
-.tv-summary {
-  max-width: 880px;
-  margin: clamp(46px, 11vh, 110px) auto 0;
+.tv-mode .header-brand-date {
+  flex: 1;
+}
+
+.tv-mode .brand-tagline {
+  display: block;
+}
+
+.tv-date {
+  position: absolute;
+  left: 50%;
+  margin: 0;
+  color: #35473c;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
   text-align: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.tv-summary {
+  max-width: 1320px;
+  margin: 35px auto 0;
 }
 
 .tv-summary h1 {
-  font-size: clamp(38px, 6vw, 68px);
+  font-size: clamp(36px, 4vw, 52px);
 }
 
-.tv-greeting {
-  margin: 14px 0 35px;
-  color: #7b867c;
-  font-size: 17px;
+.tv-household-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
 }
 
-.tv-greeting span {
-  color: #98a197;
-  font-size: 11px;
-}
-
-.tv-progress {
-  max-width: 620px;
-  margin: 0 auto 22px;
-  padding: 20px 23px;
+.tv-user-card {
+  min-width: 0;
+  padding: 18px;
   border: 1px solid #e6eae1;
   border-radius: 14px;
   background: #fff;
-  text-align: left;
+  box-shadow: 0 7px 22px rgb(52 68 56 / 4%);
 }
 
-.tv-progress-copy {
+.tv-user-header {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
   gap: 13px;
-  margin-bottom: 15px;
 }
 
 .avatar-large {
-  width: 42px;
-  height: 42px;
-  font-size: 16px;
+  width: 39px;
+  height: 39px;
+  flex: 0 0 auto;
+  font-size: 14px;
 }
 
-.tv-progress-copy div {
+.tv-user-identity {
   display: flex;
+  min-width: 0;
+  flex: 1;
   flex-direction: column;
   gap: 3px;
 }
 
-.tv-progress-copy strong {
+.tv-user-identity h2 {
+  overflow: hidden;
+  margin: 0;
   color: #425347;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tv-progress-copy div span {
+.tv-user-identity span {
   color: #879188;
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.tv-percentage {
+  color: #52775e;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
 }
 
 .progress-track {
-  height: 8px;
+  height: 7px;
   overflow: hidden;
   border-radius: 99px;
   background: #edf1ea;
+  margin: 13px 0 15px;
 }
 
 .progress-track span {
@@ -874,37 +927,118 @@
   transition: width 180ms ease;
 }
 
-.tv-today-list {
-  max-width: 620px;
-  margin: 0 auto;
-  text-align: left;
+.streak-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin: 15px 0 18px;
+}
+
+.streak-tile {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #edf0e9;
+  border-radius: 9px;
+  background: #fafbf8;
+}
+
+.streak-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #e8f1e5;
+  color: #64836a;
+  font-size: 18px;
+}
+
+.streak-icon-soft {
+  background: #edf0e8;
+  color: #839078;
+}
+
+.streak-tile div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.streak-tile strong {
+  color: #44584a;
+  font-size: 19px;
+  line-height: 1.1;
+}
+
+.streak-tile strong small {
+  color: #859086;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.streak-tile div span {
+  color: #879188;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.tv-target-list h3 {
+  margin: 0;
+  padding: 0 0 5px;
+  color: #758077;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .tv-plan-row {
   display: flex;
-  min-height: 54px;
+  min-height: 43px;
   align-items: center;
-  gap: 12px;
-  padding: 8px 5px;
+  gap: 9px;
+  padding: 7px 2px;
   border-bottom: 1px solid #eaede6;
   color: #48594c;
-  font-size: 15px;
+  font-size: 12px;
 }
 
 .tv-plan-row.is-completed {
   color: #99a199;
+}
+
+.tv-plan-row.is-completed .tv-target-title {
   text-decoration: line-through;
+}
+
+.tv-target-title {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.tv-plan-row time {
+  flex: 0 0 auto;
+  color: #849085;
+  font-size: 10px;
+  text-decoration: none;
 }
 
 .tv-check {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
   place-items: center;
   border: 1px solid #cbd5ca;
   border-radius: 50%;
   color: #fff;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .tv-plan-row.is-completed .tv-check {
@@ -913,8 +1047,21 @@
 }
 
 .empty-state {
-  padding: 24px;
+  margin: 5px 0 0;
+  padding: 12px;
+  border-radius: 7px;
+  background: #f8f9f6;
   color: #879188;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tv-streak-rule {
+  max-width: 850px;
+  margin: 17px auto 0;
+  color: #828d83;
+  font-size: 10px;
+  line-height: 1.5;
   text-align: center;
 }
 
@@ -946,6 +1093,17 @@
 
   .week-day {
     padding: 14px 9px;
+  }
+
+  .tv-summary {
+    margin-top: 27px;
+  }
+
+  .tv-household-grid {
+    grid-template-columns: repeat(3, minmax(300px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 8px;
+    overscroll-behavior-x: contain;
   }
 }
 
@@ -993,6 +1151,42 @@
     min-height: 35px;
     padding: 0 9px;
     font-size: 11px;
+  }
+
+  .tv-date {
+    max-width: 38%;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+  }
+
+  .tv-mode .brand-name {
+    font-size: 13px;
+  }
+
+  .tv-mode .brand-tagline {
+    max-width: 130px;
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .tv-mode .tv-toggle {
+    min-height: 33px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .tv-household-grid {
+    gap: 11px;
+  }
+
+  .tv-user-card {
+    padding: 14px;
+  }
+
+  .tv-streak-rule {
+    padding: 0 8px;
+    text-align: left;
   }
 
   .planner-heading {
