@@ -38,4 +38,6 @@ Accounts use Argon2id password hashes and opaque, HTTP-only, same-site session c
 
 Signed-in users can open `/accounts` from the planner to view household accounts and permanently remove another account. An account deletion also removes that user's sessions, plans, and progress history through SQLite foreign-key cascades in a transaction. The currently signed-in account cannot be removed from this page. This permission is shared by all signed-in users, not limited to an administrator.
 
-The project does not yet include account invitations/admin controls, a competition ranking chart, recurring plans, or internet-facing deployment. Keep the server restricted to the home network.
+The planner also includes a read-only yearly-goals view. Use the Goal wizard to add, modify, or remove private yearly goals, order their objectives, and assign those objectives to Monday-start weeks on the year map. Month and week views show the objectives assigned to the visible period; week cells that overlap month boundaries appear in each affected month.
+
+The project does not yet include account invitations/admin controls, recurring plans, or internet-facing deployment. Keep the server restricted to the home network.

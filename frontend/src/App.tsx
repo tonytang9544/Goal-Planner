@@ -1,10 +1,430 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import { PlanItemEditor } from './components/PlanItemEditor'
-import type { HouseholdCompetition, HouseholdToday, PlanItem, User } from './types/planner'
+import type {
+  HouseholdCompetition,
+  HouseholdToday,
+  PlanItem,
+  User,
+  YearlyGoal,
+} from './types/planner'
 import './App.css'
 
-type PlannerView = 'month' | 'week' | 'day'
+type PlannerView = 'month' | 'week' | 'day' | 'year'
 type AuthStatus = 'loading' | 'signed-out' | 'signed-in'
+type GoalDraft = { title: string; weekStarts: string[] }
+
+function utcDate(year: number, month: number, day: number): Date {
+  const date = new Date(0)
+  date.setUTCFullYear(year, month, day)
+  date.setUTCHours(0, 0, 0, 0)
+  return date
+}
+
+interface GoalPayload {
+  year: number
+  title: string
+  objectives: GoalDraft[]
+}
+
+interface ObjectiveDraft extends GoalDraft {
+  key: string
+}
+
+function weeksForYear(year: number): Date[] {
+  const firstWeek = startOfWeek(utcDate(year, 0, 1))
+  const lastWeek = startOfWeek(utcDate(year, 11, 31))
+  const weeks: Date[] = []
+  for (let week = firstWeek; week <= lastWeek; week = addDays(week, 7)) {
+    weeks.push(week)
+  }
+  return weeks
+}
+
+function weekOverlapsMonth(week: Date, year: number, month: number): boolean {
+  const monthStart = utcDate(year, month, 1)
+  const monthEnd = utcDate(year, month + 1, 0)
+  const weekEnd = addDays(week, 6)
+  return week <= monthEnd && weekEnd >= monthStart
+}
+
+function monthForWeekMap(week: Date, year: number): number {
+  const thursday = addDays(week, 3)
+  if (thursday.getUTCFullYear() < year) return 0
+  if (thursday.getUTCFullYear() > year) return 11
+  return thursday.getUTCMonth()
+}
+
+function monthSegments(weeks: Date[], year: number): { month: number; start: number; count: number }[] {
+  const segments: { month: number; start: number; count: number }[] = []
+  for (let index = 0; index < weeks.length; index += 1) {
+    const month = monthForWeekMap(weeks[index], year)
+    const current = segments[segments.length - 1]
+    if (current?.month === month) current.count += 1
+    else segments.push({ month, start: index, count: 1 })
+  }
+  return segments
+}
+
+function dateRangeLabel(weekStart: string, formatter: Intl.DateTimeFormat): string {
+  const start = dateFromKey(weekStart)
+  return `${formatter.format(start)} – ${formatter.format(addDays(start, 6))}`
+}
+
+function YearlyGoalsList({
+  goals,
+  year,
+  formatter,
+  readOnly = true,
+}: {
+  goals: YearlyGoal[]
+  year: number
+  formatter: Intl.DateTimeFormat
+  readOnly?: boolean
+}) {
+  const yearGoals = goals.filter((goal) => goal.year === year)
+  return (
+    <div className="yearly-goals-list">
+      {yearGoals.length ? yearGoals.map((goal) => (
+        <article className="yearly-goal-card" key={goal.id}>
+          <header className="yearly-goal-header">
+            <h2>{goal.title}</h2>
+            {!readOnly && <span>{goal.objectives.length} objectives</span>}
+          </header>
+          <ol className="yearly-objective-list">
+            {goal.objectives.map((objective) => (
+              <li key={objective.id}>
+                <div>
+                  <strong>{objective.title}</strong>
+                  <span>
+                    {objective.weekStarts.length
+                      ? objective.weekStarts.map((week) => dateRangeLabel(week, formatter)).join(' · ')
+                      : 'No weeks scheduled'}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </article>
+      )) : (
+        <p className="yearly-goals-empty">No goals for {year} yet. Use the goal wizard to add one.</p>
+      )}
+    </div>
+  )
+}
+
+function GoalWizardPage({
+  initialYear,
+  goals,
+  onSave,
+  onDelete,
+}: {
+  initialYear: number
+  goals: YearlyGoal[]
+  onSave: (goalId: string | null, payload: GoalPayload) => Promise<void>
+  onDelete: (goalId: string) => Promise<void>
+}) {
+  const [action, setAction] = useState<'choose' | 'add' | 'edit' | 'edit-form' | 'remove' | 'saved'>('choose')
+  const [year, setYear] = useState(initialYear)
+  const [goalId, setGoalId] = useState('')
+  const [title, setTitle] = useState('')
+  const [objectives, setObjectives] = useState<ObjectiveDraft[]>([])
+  const [activeObjective, setActiveObjective] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const mapYear = Number.isInteger(year) && year >= 1 && year <= 9999 ? year : initialYear
+  const weekDates = weeksForYear(mapYear)
+  const segments = monthSegments(weekDates, mapYear)
+  const weekdayFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+  function beginAdd() {
+    setGoalId('')
+    setTitle('')
+    const firstObjective = { key: crypto.randomUUID(), title: '', weekStarts: [] }
+    setObjectives([firstObjective])
+    setActiveObjective(firstObjective.key)
+    setYear(initialYear)
+    setError(null)
+    setAction('add')
+  }
+
+  function selectGoal(goal: YearlyGoal) {
+    setGoalId(goal.id)
+    setTitle(goal.title)
+    setYear(goal.year)
+    const nextObjectives = goal.objectives.map((objective) => ({
+      key: objective.id,
+      title: objective.title,
+      weekStarts: [...objective.weekStarts],
+    }))
+    setObjectives(nextObjectives)
+    setActiveObjective(nextObjectives[0]?.key ?? null)
+    setError(null)
+  }
+
+  function addObjective() {
+    const objective = { key: crypto.randomUUID(), title: '', weekStarts: [] }
+    setObjectives((current) => [...current, objective])
+    setActiveObjective(objective.key)
+  }
+
+  function updateObjective(key: string, update: (objective: ObjectiveDraft) => ObjectiveDraft) {
+    setObjectives((current) => current.map((objective) => objective.key === key ? update(objective) : objective))
+  }
+
+  function toggleWeek(weekStart: string) {
+    if (!activeObjective) return
+    updateObjective(activeObjective, (objective) => ({
+      ...objective,
+      weekStarts: objective.weekStarts.includes(weekStart)
+        ? objective.weekStarts.filter((week) => week !== weekStart)
+        : [...objective.weekStarts, weekStart].sort(),
+    }))
+  }
+
+  function toggleMonth(month: number) {
+    if (!activeObjective) return
+    const monthWeeks = weekDates
+      .filter((week) => weekOverlapsMonth(week, mapYear, month))
+      .map(dateKey)
+    updateObjective(activeObjective, (objective) => {
+      const allSelected = monthWeeks.every((week) => objective.weekStarts.includes(week))
+      const weekSet = new Set(objective.weekStarts)
+      for (const week of monthWeeks) {
+        if (allSelected) weekSet.delete(week)
+        else weekSet.add(week)
+      }
+      return { ...objective, weekStarts: [...weekSet].sort() }
+    })
+  }
+
+  function moveObjective(key: string, offset: -1 | 1) {
+    setObjectives((current) => {
+      const index = current.findIndex((objective) => objective.key === key)
+      const target = index + offset
+      if (index < 0 || target < 0 || target >= current.length) return current
+      const reordered = [...current]
+      const [objective] = reordered.splice(index, 1)
+      reordered.splice(target, 0, objective)
+      return reordered
+    })
+  }
+
+  async function submitGoal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+    if (!Number.isInteger(year) || year < 1 || year > 9999) {
+      setError('Enter a year between 1 and 9999.')
+      return
+    }
+    if (objectives.length === 0 || objectives.some((objective) => !objective.title.trim())) {
+      setError('Add at least one objective and give each objective a title.')
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(goalId || null, {
+        year,
+        title,
+        objectives: objectives.map(({ title: objectiveTitle, weekStarts }) => ({
+          title: objectiveTitle,
+          weekStarts,
+        })),
+      })
+      setAction('saved')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save goal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!goalId) return
+    const selected = goals.find((goal) => goal.id === goalId)
+    if (!selected || !window.confirm(`Permanently remove “${selected.title}” and all its objectives?`)) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onDelete(goalId)
+      setAction('saved')
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not remove goal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="goal-wizard" aria-labelledby="goal-wizard-title">
+      <a className="goal-back-link" href="/">← Back to planner</a>
+      <p className="eyebrow">YEARLY PLANNING</p>
+      <h1 id="goal-wizard-title">Goal wizard</h1>
+      {action === 'choose' ? (
+        <div className="wizard-choice">
+          <h2>What would you like to do?</h2>
+          <button className="button button-primary" type="button" onClick={beginAdd}>Add a goal</button>
+          <button className="button button-quiet" type="button" onClick={() => { setAction('edit'); setError(null) }}>Modify an existing goal</button>
+          <button className="button button-quiet button-danger" type="button" onClick={() => { setAction('remove'); setError(null) }}>Remove a goal</button>
+        </div>
+      ) : action === 'edit' || action === 'remove' ? (
+        <div className="wizard-goal-selection">
+          <h2>{action === 'edit' ? 'Choose a goal to modify' : 'Choose a goal to remove'}</h2>
+          {goals.length ? goals.map((goal) => (
+            <button
+              className={`wizard-goal-option${goalId === goal.id ? ' is-selected' : ''}`}
+              key={goal.id}
+              type="button"
+              aria-pressed={goalId === goal.id}
+              onClick={() => selectGoal(goal)}
+            >
+              <strong>{goal.title}</strong><span>{goal.year} · {goal.objectives.length} objectives</span>
+            </button>
+          )) : <p>No existing goals are available.</p>}
+          {error && <p className="error-banner" role="alert">{error}</p>}
+          <div className="wizard-actions">
+            <button className="button button-quiet" type="button" onClick={() => setAction('choose')}>Back</button>
+            {action === 'edit' && goalId && (
+              <button className="button button-primary" type="button" onClick={() => setAction('edit-form')}>Continue editing</button>
+            )}
+            {action === 'remove' && goalId && (
+              <button className="button button-danger" type="button" disabled={saving} onClick={() => void confirmDelete()}>
+                {saving ? 'Removing…' : 'Remove selected goal'}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : action === 'saved' ? (
+        <div className="wizard-saved">
+          <h2>Goals updated</h2>
+          <p>Your yearly goals and planner objectives are saved.</p>
+          <a className="button button-primary" href="/yearly-goals">View yearly goals</a>
+        </div>
+      ) : (
+        <form className="goal-editor" onSubmit={(event) => void submitGoal(event)}>
+          <label className="form-field">
+            <span>Goal name</span>
+            <input required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} />
+          </label>
+          <label className="form-field goal-year-field">
+            <span>Year</span>
+            <input
+              required
+              type="number"
+              min={1}
+              max={9999}
+              value={year}
+              onChange={(event) => setYear(Number(event.target.value))}
+            />
+          </label>
+          <div className="objective-editor">
+            <div className="objective-editor-heading">
+              <div>
+                <h2>Ordered objectives</h2>
+                <p>Choose an objective, then assign it to weeks below.</p>
+              </div>
+              <button className="button button-quiet" type="button" onClick={addObjective}>Add objective</button>
+            </div>
+            {objectives.map((objective, index) => (
+              <div
+                className={`objective-draft${activeObjective === objective.key ? ' is-active' : ''}`}
+                key={objective.key}
+              >
+                <button
+                  className="objective-select"
+                  type="button"
+                  aria-pressed={activeObjective === objective.key}
+                  onClick={() => setActiveObjective(objective.key)}
+                >
+                  {index + 1}
+                </button>
+                <input
+                  aria-label={`Objective ${index + 1}`}
+                  required
+                  maxLength={160}
+                  placeholder="Describe an objective"
+                  value={objective.title}
+                  onChange={(event) => updateObjective(objective.key, (current) => ({ ...current, title: event.target.value }))}
+                />
+                <button type="button" aria-label={`Move objective ${index + 1} up`} disabled={index === 0} onClick={() => moveObjective(objective.key, -1)}>↑</button>
+                <button type="button" aria-label={`Move objective ${index + 1} down`} disabled={index === objectives.length - 1} onClick={() => moveObjective(objective.key, 1)}>↓</button>
+                <button
+                  type="button"
+                  aria-label={`Remove objective ${index + 1}`}
+                  onClick={() => {
+                    setObjectives((current) => current.filter((item) => item.key !== objective.key))
+                    if (activeObjective === objective.key) setActiveObjective(objectives.find((item) => item.key !== objective.key)?.key ?? null)
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <section className="year-map" aria-labelledby="year-map-title">
+            <h2 id="year-map-title">Choose weeks for {activeObjective ? `objective ${objectives.findIndex((objective) => objective.key === activeObjective) + 1}` : 'an objective'}</h2>
+            <p>Weeks start on Monday. Select a month to toggle all overlapping weeks, or refine the selection square by square.</p>
+            <div className="year-map-scroll">
+              <div className="year-map-content" style={{ '--week-count': weekDates.length } as CSSProperties}>
+                <div className="year-map-months">
+                  {segments.map((segment) => (
+                    <button
+                      className="year-map-month"
+                      key={segment.month}
+                      type="button"
+                      style={{ gridColumn: `${segment.start + 1} / span ${segment.count}` }}
+                      aria-label={`Toggle all weeks overlapping ${new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(utcDate(year, segment.month, 1))}`}
+                      onClick={() => toggleMonth(segment.month)}
+                    >
+                      {new Intl.DateTimeFormat(undefined, { month: 'short', timeZone: 'UTC' }).format(utcDate(year, segment.month, 1))}
+                    </button>
+                  ))}
+                </div>
+                <div className="year-map-weeks">
+                  {weekDates.map((week) => {
+                    const key = dateKey(week)
+                    const selected = Boolean(objectives.find((objective) => objective.key === activeObjective)?.weekStarts.includes(key))
+                    const weekEnd = addDays(week, 6)
+                    const crossesYear = week.getUTCFullYear() !== mapYear || weekEnd.getUTCFullYear() !== mapYear
+                    const marksMonthBoundary = weekDates.some((candidate) => {
+                      const monthStart = utcDate(mapYear, candidate.getUTCMonth(), 1)
+                      const monthEnd = utcDate(mapYear, candidate.getUTCMonth() + 1, 0)
+                      return (monthStart >= week && monthStart <= weekEnd)
+                        || (monthEnd >= week && monthEnd <= weekEnd)
+                    })
+                    return (
+                      <button
+                        className={`year-map-week${selected ? ' is-selected' : ''}${crossesYear ? ' crosses-year' : ''}${marksMonthBoundary ? ' marks-month-boundary' : ''}`}
+                        key={key}
+                        type="button"
+                        aria-label={`Week ${dateRangeLabel(key, weekdayFormatter)}${crossesYear ? ', overlaps another year' : ''}${selected ? ', selected' : ''}`}
+                        aria-pressed={selected}
+                        disabled={!activeObjective}
+                        onClick={() => toggleWeek(key)}
+                      >
+                        <span>{weekDates.indexOf(week) + 1}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="year-map-legend">
+                  <span>Each square is one Monday-start week</span>
+                  <span className="year-map-year-boundary">Dashed outline overlaps another year</span>
+                </div>
+              </div>
+            </div>
+          </section>
+          {error && <p className="error-banner" role="alert">{error}</p>}
+          <div className="wizard-actions">
+            <button className="button button-quiet" type="button" onClick={() => setAction('choose')}>Back</button>
+            <button className="button button-primary" type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save goal'}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
 
 const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const refreshIntervalMs = 15_000
@@ -41,7 +461,7 @@ function dateKey(date: Date): string {
 
 function dateFromKey(value: string): Date {
   const [year, month, day] = value.split('-').map(Number)
-  return new Date(Date.UTC(year, month - 1, day))
+  return utcDate(year, month - 1, day)
 }
 
 function dateKeyInTimeZone(date: Date, timeZone: string): string {
@@ -129,9 +549,12 @@ function PlannerItem({
 function App() {
   const isTvMode = window.location.pathname.replace(/\/+$/, '') === '/tv'
   const isAccountManagement = window.location.pathname.replace(/\/+$/, '') === '/accounts'
+  const isYearlyGoalsPage = window.location.pathname.replace(/\/+$/, '') === '/yearly-goals'
+  const isGoalWizardPage = window.location.pathname.replace(/\/+$/, '') === '/goal-wizard'
   const [clock, setClock] = useState(() => new Date())
   const [items, setItems] = useState<PlanItem[]>([])
   const [accounts, setAccounts] = useState<User[]>([])
+  const [goals, setGoals] = useState<YearlyGoal[]>([])
   const [user, setUser] = useState<User | null>(null)
   const [household, setHousehold] = useState<HouseholdToday | null>(null)
   const [competition, setCompetition] = useState<HouseholdCompetition | null>(null)
@@ -183,7 +606,8 @@ function App() {
 
   const today = household?.date ?? dateKeyInTimeZone(clock, householdTimeZone)
   const selectedDateValue = dateFromKey(selectedDate)
-  const monthStart = new Date(Date.UTC(selectedDateValue.getUTCFullYear(), selectedDateValue.getUTCMonth(), 1))
+  const selectedYear = selectedDateValue.getUTCFullYear()
+  const monthStart = utcDate(selectedDateValue.getUTCFullYear(), selectedDateValue.getUTCMonth(), 1)
   const monthGridStart = startOfWeek(monthStart)
   const monthDays = Array.from({ length: 42 }, (_, index) => addDays(monthGridStart, index))
   const weekStart = startOfWeek(selectedDateValue)
@@ -226,10 +650,15 @@ function App() {
     setAccounts(result)
   }, [])
 
+  const refreshGoals = useCallback(async () => {
+    const result = await apiRequest<YearlyGoal[]>('/api/goals')
+    setGoals(result)
+  }, [])
+
   const refreshPlans = useCallback(async () => {
     const monthStart = dateFromKey(selectedDate)
     const gridStart = startOfWeek(
-      new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1)),
+      utcDate(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1),
     )
     const start = dateKey(gridStart)
     const end = dateKey(addDays(gridStart, 41))
@@ -249,8 +678,10 @@ function App() {
           if (tvPage === 'competition') await refreshCompetition()
         } else if (isAccountManagement) {
           await refreshAccounts()
+        } else if (isYearlyGoalsPage || isGoalWizardPage) {
+          await refreshGoals()
         } else {
-          await Promise.all([refreshPlans(), refreshHousehold()])
+          await Promise.all([refreshPlans(), refreshHousehold(), refreshGoals()])
         }
         if (active) setError(null)
       } catch (requestError) {
@@ -271,7 +702,19 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [authStatus, isAccountManagement, isTvMode, tvPage, refreshPlans, refreshHousehold, refreshAccounts, refreshCompetition])
+  }, [
+    authStatus,
+    isAccountManagement,
+    isGoalWizardPage,
+    isTvMode,
+    isYearlyGoalsPage,
+    tvPage,
+    refreshPlans,
+    refreshHousehold,
+    refreshAccounts,
+    refreshCompetition,
+    refreshGoals,
+  ])
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -330,9 +773,26 @@ function App() {
     }
   }
 
+  async function saveGoal(goalId: string | null, payload: GoalPayload) {
+    const saved = await apiRequest<YearlyGoal>(
+      goalId ? `/api/goals/${goalId}` : '/api/goals',
+      {
+        method: goalId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+    setGoals((current) => [...current.filter((goal) => goal.id !== saved.id), saved])
+  }
+
+  async function removeGoal(goalId: string) {
+    await apiRequest<void>(`/api/goals/${goalId}`, { method: 'DELETE' })
+    setGoals((current) => current.filter((goal) => goal.id !== goalId))
+  }
+
   function navigatePeriod(direction: -1 | 1) {
     const nextDate = new Date(selectedDateValue)
-    if (view === 'month') nextDate.setUTCMonth(nextDate.getUTCMonth() + direction, 1)
+    if (view === 'year') nextDate.setUTCFullYear(nextDate.getUTCFullYear() + direction, 1, 1)
+    else if (view === 'month') nextDate.setUTCMonth(nextDate.getUTCMonth() + direction, 1)
     else if (view === 'week') nextDate.setUTCDate(nextDate.getUTCDate() + direction * 7)
     else nextDate.setUTCDate(nextDate.getUTCDate() + direction)
     setSelectedDate(dateKey(nextDate))
@@ -416,7 +876,9 @@ function App() {
   }
 
   const rangeLabel =
-    view === 'month'
+    view === 'year'
+      ? String(selectedYear)
+      : view === 'month'
       ? monthFormatter.format(selectedDateValue)
       : view === 'week'
         ? `${shortDateFormatter.format(weekStart)} – ${shortDateFormatter.format(weekDays[6])}`
@@ -431,6 +893,18 @@ function App() {
       ? `${shortDateFormatter.format(dateFromKey(competition.startDate))} – ${shortDateFormatter.format(dateFromKey(competition.endDate))}`
       : monthFormatter.format(dateFromKey(competition.startDate))
     : ''
+  const monthEnd = utcDate(selectedYear, selectedDateValue.getUTCMonth() + 1, 0)
+  const selectedWeekStart = dateKey(weekStart)
+  const visibleObjectives = goals
+    .filter((goal) => goal.year === selectedYear)
+    .flatMap((goal) => goal.objectives
+      .filter((objective) => objective.weekStarts.some((assignedWeek) => {
+        const weekStartDate = dateFromKey(assignedWeek)
+        if (view === 'week') return assignedWeek === selectedWeekStart
+        const weekEnd = addDays(weekStartDate, 6)
+        return weekStartDate <= monthEnd && weekEnd >= monthStart
+      }))
+      .map((objective) => ({ goal, objective })))
 
   if (!isTvMode && authStatus === 'loading') {
     return <main className="auth-shell" aria-live="polite">Loading your planner…</main>
@@ -743,6 +1217,26 @@ function App() {
             })}
           </div>
         </section>
+      ) : isYearlyGoalsPage ? (
+        <section className="yearly-goals-page" aria-labelledby="yearly-goals-title">
+          <a className="goal-back-link" href="/">← Back to planner</a>
+          <p className="eyebrow">YEARLY PLANNING</p>
+          <div className="yearly-page-heading">
+            <div>
+              <h1 id="yearly-goals-title">{selectedYear} goals</h1>
+              <p>View your goals and the ordered objectives scheduled throughout the year.</p>
+            </div>
+            <a className="button button-primary" href="/goal-wizard">Open goal wizard</a>
+          </div>
+          <YearlyGoalsList goals={goals} year={selectedYear} formatter={shortDateFormatter} />
+        </section>
+      ) : isGoalWizardPage ? (
+        <GoalWizardPage
+          initialYear={selectedYear}
+          goals={goals}
+          onSave={saveGoal}
+          onDelete={removeGoal}
+        />
       ) : (
         <>
           <section className="planner-heading" aria-labelledby="planner-title">
@@ -751,12 +1245,38 @@ function App() {
               <h1 id="planner-title">My planner</h1>
               <p className="planner-subtitle">A calmer way to plan the days ahead.</p>
             </div>
-            <button className="button button-primary add-plan-button" type="button" onClick={() => openNewItem()}>
-              <span aria-hidden="true">+</span> Add a plan
-            </button>
+            <div className="planner-heading-actions">
+              <a className="button button-quiet" href="/yearly-goals">Yearly goals</a>
+              <a className="button button-quiet" href="/goal-wizard">Goal wizard</a>
+              <button className="button button-primary add-plan-button" type="button" onClick={() => openNewItem()}>
+                <span aria-hidden="true">+</span> Add a plan
+              </button>
+            </div>
           </section>
 
-          <section className="planner-panel" aria-label="Personal planner">
+          <div className={`planner-layout${view === 'month' || view === 'week' ? ' has-objectives' : ''}`}>
+            {(view === 'month' || view === 'week') && (
+              <aside className="objectives-panel" aria-labelledby="objectives-panel-title">
+                <p className="eyebrow">{view === 'month' ? 'MONTH OBJECTIVES' : 'WEEK OBJECTIVES'}</p>
+                <h2 id="objectives-panel-title">
+                  {view === 'month' ? monthFormatter.format(selectedDateValue) : rangeLabel}
+                </h2>
+                {visibleObjectives.length ? (
+                  <ol>
+                    {visibleObjectives.map(({ goal, objective }) => (
+                      <li key={objective.id}>
+                        <strong>{objective.title}</strong>
+                        <span>{goal.title}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="objectives-empty">No objectives scheduled for this {view}.</p>
+                )}
+                <a href="/goal-wizard">Plan objectives</a>
+              </aside>
+            )}
+            <section className="planner-panel" aria-label="Personal planner">
             <div className="planner-toolbar">
               <div className="period-navigation">
                 <button className="nav-button" type="button" aria-label="Previous period" onClick={() => navigatePeriod(-1)}>
@@ -775,14 +1295,14 @@ function App() {
                 </button>
               </div>
               <div className="view-switcher" role="group" aria-label="Planner view">
-                {(['month', 'week', 'day'] as const).map((option) => (
+                {(['month', 'week', 'day', 'year'] as const).map((option) => (
                   <button
                     key={option}
                     type="button"
                     aria-pressed={view === option}
                     onClick={() => setView(option)}
                   >
-                    {option[0].toUpperCase() + option.slice(1)}
+                    {option === 'year' ? 'Yearly goals' : option[0].toUpperCase() + option.slice(1)}
                   </button>
                 ))}
               </div>
@@ -900,8 +1420,21 @@ function App() {
                   </div>
                 </section>
               )}
+              {view === 'year' && (
+                <section className="planner-year-view" aria-label={`${selectedYear} yearly goals`}>
+                  <header className="planner-year-heading">
+                    <div>
+                      <h3>{selectedYear} goals</h3>
+                      <p>Your goals and their ordered objectives. This view is read-only.</p>
+                    </div>
+                    <a className="button button-quiet" href="/goal-wizard">Open goal wizard</a>
+                  </header>
+                  <YearlyGoalsList goals={goals} year={selectedYear} formatter={shortDateFormatter} />
+                </section>
+              )}
             </div>
-          </section>
+            </section>
+          </div>
           <p className="privacy-note"><span aria-hidden="true">◈</span> Your plans are personal. Only your progress totals are intended for the household chart.</p>
         </>
       )}

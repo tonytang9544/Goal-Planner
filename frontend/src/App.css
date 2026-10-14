@@ -298,6 +298,13 @@
   font-size: 15px;
 }
 
+.planner-heading-actions,
+.wizard-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
 .add-plan-button > span,
 .day-heading .button > span {
   font-size: 19px;
@@ -382,6 +389,496 @@
   background: #f2f8f1;
   color: #426c58;
   font-size: 12px;
+}
+
+.planner-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.planner-layout.has-objectives {
+  grid-template-columns: minmax(220px, 0.28fr) minmax(0, 1fr);
+}
+
+.objectives-panel {
+  position: sticky;
+  top: 18px;
+  padding: 21px 18px;
+  border: 1px solid #e6e8e1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgb(52 68 56 / 4%);
+}
+
+.objectives-panel h2 {
+  margin: 0 0 17px;
+  color: #35473c;
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+.objectives-panel ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: objective;
+}
+
+.objectives-panel li {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  padding: 0 0 12px 27px;
+  border-bottom: 1px solid #edf0e9;
+  counter-increment: objective;
+}
+
+.objectives-panel li::before {
+  position: absolute;
+  left: 0;
+  color: #709078;
+  font-size: 13px;
+  font-weight: 700;
+  content: counter(objective);
+}
+
+.objectives-panel li strong {
+  color: #425347;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.objectives-panel li span,
+.objectives-empty {
+  color: #879188;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.objectives-empty {
+  margin: 0 0 16px;
+}
+
+.objectives-panel > a {
+  display: inline-block;
+  margin-top: 16px;
+  color: #426c58;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.yearly-goals-page,
+.goal-wizard {
+  max-width: 1120px;
+  margin: 38px auto 0;
+}
+
+.goal-back-link {
+  display: inline-block;
+  margin-bottom: 27px;
+  color: #52775e;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.goal-back-link:hover,
+.objectives-panel > a:hover {
+  text-decoration: underline;
+}
+
+.yearly-page-heading,
+.planner-year-heading,
+.objective-editor-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.yearly-page-heading h1,
+.goal-wizard > h1 {
+  margin: 0;
+  color: #26382f;
+  font-size: clamp(32px, 4vw, 47px);
+  letter-spacing: -0.05em;
+}
+
+.yearly-page-heading p,
+.planner-year-heading p,
+.objective-editor-heading p {
+  margin: 8px 0 0;
+  color: #78827a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.yearly-goals-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.yearly-goal-card {
+  padding: 20px 22px;
+  border: 1px solid #e6e8e1;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgb(52 68 56 / 3%);
+}
+
+.yearly-goal-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yearly-goal-header h2 {
+  margin: 0;
+  color: #35473c;
+  font-size: 20px;
+}
+
+.yearly-goal-header > span {
+  color: #879188;
+  font-size: 12px;
+}
+
+.yearly-objective-list {
+  display: grid;
+  gap: 0;
+  margin: 13px 0 0;
+  padding-left: 25px;
+}
+
+.yearly-objective-list li {
+  padding: 11px 4px;
+  border-top: 1px solid #edf0e9;
+  color: #709078;
+}
+
+.yearly-objective-list li > div {
+  display: grid;
+  gap: 5px;
+}
+
+.yearly-objective-list strong {
+  color: #425347;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.yearly-objective-list span {
+  color: #879188;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.yearly-goals-empty {
+  padding: 26px;
+  border: 1px dashed #d9e1d8;
+  border-radius: 12px;
+  color: #78827a;
+  font-size: 14px;
+  text-align: center;
+}
+
+.planner-year-view {
+  padding: 24px;
+}
+
+.planner-year-heading {
+  align-items: center;
+}
+
+.planner-year-heading h3 {
+  margin: 0;
+  color: #35473c;
+  font-size: 23px;
+}
+
+.planner-year-view .yearly-goals-list {
+  margin-top: 20px;
+}
+
+.goal-wizard {
+  max-width: 1040px;
+  padding-bottom: 40px;
+}
+
+.wizard-choice,
+.wizard-goal-selection,
+.goal-editor,
+.wizard-saved {
+  margin-top: 22px;
+  padding: clamp(18px, 3vw, 32px);
+  border: 1px solid #e6e8e1;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.wizard-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.wizard-choice h2 {
+  width: 100%;
+  margin: 0 0 8px;
+  color: #35473c;
+  font-size: 21px;
+}
+
+.wizard-goal-selection h2,
+.objective-editor-heading h2,
+.year-map h2,
+.wizard-saved h2 {
+  margin: 0;
+  color: #35473c;
+  font-size: 19px;
+}
+
+.wizard-goal-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-top: 10px;
+  padding: 15px;
+  border: 1px solid #e6eae1;
+  border-radius: 9px;
+  background: #fff;
+  color: #425347;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wizard-goal-option.is-selected {
+  border-color: #709078;
+  background: #f2f7f1;
+}
+
+.wizard-goal-option strong {
+  font-size: 14px;
+}
+
+.wizard-goal-option span {
+  color: #879188;
+  font-size: 12px;
+}
+
+.wizard-actions {
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.goal-editor {
+  display: grid;
+  gap: 21px;
+}
+
+.goal-editor .form-field {
+  display: grid;
+  max-width: 580px;
+  gap: 8px;
+  color: #59675c;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.goal-editor .form-field input,
+.objective-draft input {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+  background: #fff;
+  color: #35473c;
+  font: inherit;
+  font-size: 13px;
+}
+
+.goal-editor .goal-year-field {
+  max-width: 180px;
+}
+
+.objective-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.objective-editor-heading {
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.objective-editor-heading p {
+  font-size: 12px;
+}
+
+.objective-draft {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) repeat(3, 36px);
+  align-items: center;
+  gap: 8px;
+}
+
+.objective-draft.is-active {
+  padding: 7px;
+  border: 1px solid #a8c0aa;
+  border-radius: 10px;
+  background: #f6f9f4;
+}
+
+.objective-draft > button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #e2e6df;
+  border-radius: 8px;
+  background: #fff;
+  color: #526b58;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.objective-draft > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.objective-draft > .objective-select {
+  border-radius: 50%;
+  background: #e8f1e5;
+}
+
+.objective-draft > .objective-select[aria-pressed="true"] {
+  background: #426c58;
+  color: #fff;
+}
+
+.year-map {
+  display: grid;
+  gap: 8px;
+}
+
+.year-map > p {
+  margin: 0;
+  color: #78827a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.year-map-scroll {
+  overflow-x: auto;
+  padding: 6px 0 12px;
+  overscroll-behavior-x: contain;
+}
+
+.year-map-content {
+  width: max-content;
+  padding-top: 5px;
+}
+
+.year-map-months,
+.year-map-weeks {
+  display: grid;
+  grid-template-columns: repeat(var(--week-count), 38px);
+  gap: 4px;
+}
+
+.year-map-month {
+  min-height: 34px;
+  padding: 4px 2px;
+  border: 0;
+  border-left: 2px solid #cad6ca;
+  background: transparent;
+  color: #526b58;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.year-map-month:focus-visible,
+.year-map-week:focus-visible,
+.objective-draft > button:focus-visible,
+.wizard-goal-option:focus-visible {
+  outline: 3px solid #88a993;
+  outline-offset: 2px;
+}
+
+.year-map-week {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #dde4dc;
+  border-radius: 6px;
+  background: #f7f9f6;
+  color: #657268;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.year-map-week.marks-month-boundary {
+  border-left: 3px solid #8ca791;
+}
+
+.year-map-week.is-selected {
+  border-color: #426c58;
+  background: #426c58;
+  color: #fff;
+  box-shadow: inset 0 0 0 2px #fff;
+}
+
+.year-map-week.crosses-year {
+  border-style: dashed;
+}
+
+.year-map-week:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.year-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 11px;
+  color: #879188;
+  font-size: 11px;
+}
+
+.year-map-year-boundary::before {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border: 1px dashed #8ca791;
+  border-radius: 2px;
+  content: "";
+  vertical-align: -1px;
+}
+
+.wizard-saved p {
+  margin: 8px 0 18px;
+  color: #78827a;
+  font-size: 13px;
 }
 
 .planner-toolbar {
@@ -1413,6 +1910,14 @@
 }
 
 @media (max-width: 800px) {
+  .planner-layout.has-objectives {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .objectives-panel {
+    position: static;
+  }
+
   .week-planner {
     grid-template-columns: repeat(7, minmax(150px, 1fr));
     overflow-x: auto;
@@ -1533,8 +2038,61 @@
   }
 
   .planner-heading {
-    align-items: center;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
     padding: 31px 0 22px;
+  }
+
+  .planner-heading-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .planner-heading .add-plan-button {
+    width: auto;
+    min-height: 42px;
+    margin-left: auto;
+    padding: 0 13px;
+  }
+
+  .yearly-page-heading,
+  .planner-year-heading,
+  .objective-editor-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .goal-wizard {
+    margin-top: 26px;
+  }
+
+  .wizard-choice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wizard-choice .button {
+    width: 100%;
+  }
+
+  .wizard-goal-option {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .objective-draft {
+    grid-template-columns: auto minmax(0, 1fr) repeat(3, 32px);
+    gap: 5px;
+  }
+
+  .objective-draft > button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .planner-heading {
+    align-items: flex-start;
   }
 
   .planner-heading h1 {

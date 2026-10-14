@@ -45,6 +45,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/session", get(session))
         .route("/api/accounts", get(list_accounts))
         .route("/api/accounts/{id}", axum::routing::delete(delete_account))
+        .route("/api/goals", get(list_goals).post(create_goal))
+        .route("/api/goals/{id}", put(update_goal).delete(delete_goal))
         .route("/api/plans", get(list_plans).post(create_plan))
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         .route("/api/plans/order", put(reorder_plans))
@@ -159,6 +161,47 @@ struct ReorderInput {
 struct PlanRange {
     start: String,
     end: String,
+}
+
+#[derive(Deserialize)]
+struct GoalQuery {
+    year: Option<i32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GoalInput {
+    year: i32,
+    title: String,
+    objectives: Vec<GoalObjectiveInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GoalObjectiveInput {
+    title: String,
+    week_starts: Vec<NaiveDate>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct YearlyGoal {
+    id: Uuid,
+    user_id: Uuid,
+    year: i32,
+    title: String,
+    objectives: Vec<GoalObjective>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GoalObjective {
+    id: Uuid,
+    title: String,
+    position: u32,
+    week_starts: Vec<NaiveDate>,
 }
 
 #[derive(Deserialize)]
@@ -399,6 +442,257 @@ async fn delete_account(
     }
     transaction.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_goals(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<GoalQuery>,
+) -> Result<Json<Vec<YearlyGoal>>, ApiError> {
+    let (user, _) = authenticated_user(&state, &headers).await?;
+    if let Some(year) = query.year {
+        validate_goal_year(year)?;
+    }
+    let rows = sqlx::query(
+        "SELECT id, user_id, year, title, created_at, updated_at FROM yearly_goals WHERE user_id = ? AND (? IS NULL OR year = ?) ORDER BY year DESC, created_at, id",
+    )
+    .bind(user.id.to_string())
+    .bind(query.year)
+    .bind(query.year)
+    .fetch_all(&state.pool)
+    .await?;
+    let mut goals = Vec::with_capacity(rows.len());
+    for row in rows {
+        let goal_id: String = row.try_get("id").map_err(ApiError::from)?;
+        let objective_rows = sqlx::query(
+            "SELECT id, title, position FROM goal_objectives WHERE goal_id = ? ORDER BY position",
+        )
+        .bind(&goal_id)
+        .fetch_all(&state.pool)
+        .await?;
+        let mut objectives = Vec::with_capacity(objective_rows.len());
+        for objective_row in objective_rows {
+            let objective_id: String = objective_row.try_get("id").map_err(ApiError::from)?;
+            let week_rows = sqlx::query(
+                "SELECT week_start FROM objective_weeks WHERE objective_id = ? ORDER BY week_start",
+            )
+            .bind(&objective_id)
+            .fetch_all(&state.pool)
+            .await?;
+            let week_starts = week_rows
+                .iter()
+                .map(|week_row| {
+                    parse_date(
+                        &week_row
+                            .try_get::<String, _>("week_start")
+                            .map_err(ApiError::from)?,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let position: i64 = objective_row.try_get("position").map_err(ApiError::from)?;
+            objectives.push(GoalObjective {
+                id: parse_uuid(objective_id)?,
+                title: objective_row.try_get("title").map_err(ApiError::from)?,
+                position: position.try_into().map_err(|_| ApiError::internal())?,
+                week_starts,
+            });
+        }
+        goals.push(YearlyGoal {
+            id: parse_uuid(goal_id)?,
+            user_id: parse_uuid(row.try_get("user_id").map_err(ApiError::from)?)?,
+            year: row.try_get("year").map_err(ApiError::from)?,
+            title: row.try_get("title").map_err(ApiError::from)?,
+            objectives,
+            created_at: parse_timestamp(row.try_get("created_at").map_err(ApiError::from)?)?,
+            updated_at: parse_timestamp(row.try_get("updated_at").map_err(ApiError::from)?)?,
+        });
+    }
+    Ok(Json(goals))
+}
+
+async fn create_goal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<GoalInput>,
+) -> Result<(StatusCode, Json<YearlyGoal>), ApiError> {
+    let (user, _) = authenticated_user(&state, &headers).await?;
+    validate_goal_input(&input)?;
+    let now = Utc::now();
+    let id = Uuid::new_v4();
+    let mut transaction = state.pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO yearly_goals (id, user_id, year, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id.to_string())
+    .bind(user.id.to_string())
+    .bind(input.year)
+    .bind(input.title.trim())
+    .bind(timestamp(now))
+    .bind(timestamp(now))
+    .execute(&mut *transaction)
+    .await?;
+    let objectives = insert_goal_objectives(&mut transaction, id, &input.objectives).await?;
+    transaction.commit().await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(YearlyGoal {
+            id,
+            user_id: user.id,
+            year: input.year,
+            title: input.title.trim().to_owned(),
+            objectives,
+            created_at: now,
+            updated_at: now,
+        }),
+    ))
+}
+
+async fn update_goal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(input): Json<GoalInput>,
+) -> Result<Json<YearlyGoal>, ApiError> {
+    let (user, _) = authenticated_user(&state, &headers).await?;
+    validate_goal_input(&input)?;
+    let mut transaction = state.pool.begin().await?;
+    let row = sqlx::query("SELECT created_at FROM yearly_goals WHERE id = ? AND user_id = ?")
+        .bind(id.to_string())
+        .bind(user.id.to_string())
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    let created_at = parse_timestamp(row.try_get("created_at").map_err(ApiError::from)?)?;
+    let now = Utc::now();
+    sqlx::query(
+        "UPDATE yearly_goals SET year = ?, title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+    )
+    .bind(input.year)
+    .bind(input.title.trim())
+    .bind(timestamp(now))
+    .bind(id.to_string())
+    .bind(user.id.to_string())
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query("DELETE FROM goal_objectives WHERE goal_id = ?")
+        .bind(id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    let objectives = insert_goal_objectives(&mut transaction, id, &input.objectives).await?;
+    transaction.commit().await?;
+    Ok(Json(YearlyGoal {
+        id,
+        user_id: user.id,
+        year: input.year,
+        title: input.title.trim().to_owned(),
+        objectives,
+        created_at,
+        updated_at: now,
+    }))
+}
+
+async fn delete_goal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    let (user, _) = authenticated_user(&state, &headers).await?;
+    let result = sqlx::query("DELETE FROM yearly_goals WHERE id = ? AND user_id = ?")
+        .bind(id.to_string())
+        .bind(user.id.to_string())
+        .execute(&state.pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found());
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn insert_goal_objectives(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    goal_id: Uuid,
+    inputs: &[GoalObjectiveInput],
+) -> Result<Vec<GoalObjective>, ApiError> {
+    let mut objectives = Vec::with_capacity(inputs.len());
+    for (position, input) in inputs.iter().enumerate() {
+        let id = Uuid::new_v4();
+        let title = input.title.trim().to_owned();
+        sqlx::query(
+            "INSERT INTO goal_objectives (id, goal_id, title, position) VALUES (?, ?, ?, ?)",
+        )
+        .bind(id.to_string())
+        .bind(goal_id.to_string())
+        .bind(&title)
+        .bind(i64::try_from(position).map_err(|_| ApiError::internal())?)
+        .execute(&mut **transaction)
+        .await?;
+        for week_start in &input.week_starts {
+            sqlx::query("INSERT INTO objective_weeks (objective_id, week_start) VALUES (?, ?)")
+                .bind(id.to_string())
+                .bind(week_start.to_string())
+                .execute(&mut **transaction)
+                .await?;
+        }
+        objectives.push(GoalObjective {
+            id,
+            title,
+            position: u32::try_from(position).map_err(|_| ApiError::internal())?,
+            week_starts: input.week_starts.clone(),
+        });
+    }
+    Ok(objectives)
+}
+
+fn validate_goal_year(year: i32) -> Result<(), ApiError> {
+    if !(1..=9999).contains(&year) {
+        return Err(ApiError::bad_request(
+            "Goal year must be between 1 and 9999",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_goal_input(input: &GoalInput) -> Result<(), ApiError> {
+    validate_goal_year(input.year)?;
+    if input.title.trim().is_empty() || input.title.trim().chars().count() > 120 {
+        return Err(ApiError::bad_request(
+            "Goal title must be between 1 and 120 characters",
+        ));
+    }
+    if input.objectives.is_empty() || input.objectives.len() > 20 {
+        return Err(ApiError::bad_request(
+            "A goal must have between 1 and 20 objectives",
+        ));
+    }
+    let year_start = NaiveDate::from_ymd_opt(input.year, 1, 1).ok_or_else(ApiError::internal)?;
+    let year_end = NaiveDate::from_ymd_opt(input.year, 12, 31).ok_or_else(ApiError::internal)?;
+    for objective in &input.objectives {
+        if objective.title.trim().is_empty() || objective.title.trim().chars().count() > 160 {
+            return Err(ApiError::bad_request(
+                "Objective title must be between 1 and 160 characters",
+            ));
+        }
+        if objective.week_starts.len() > 54 {
+            return Err(ApiError::bad_request(
+                "An objective may be assigned to at most 54 weeks",
+            ));
+        }
+        let unique_weeks = objective.week_starts.iter().collect::<HashSet<_>>();
+        if unique_weeks.len() != objective.week_starts.len()
+            || objective.week_starts.iter().any(|week_start| {
+                week_start.weekday().num_days_from_monday() != 0
+                    || *week_start > year_end
+                    || week_start
+                        .checked_add_days(Days::new(6))
+                        .is_none_or(|week_end| week_end < year_start)
+            })
+        {
+            return Err(ApiError::bad_request(
+                "Objective weeks must be unique Monday-start weeks that overlap the goal year",
+            ));
+        }
+    }
+    Ok(())
 }
 
 async fn list_plans(

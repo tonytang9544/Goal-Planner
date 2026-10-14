@@ -27,6 +27,23 @@ export interface PlanItem {
   updatedAt: string
 }
 
+export interface GoalObjective {
+  id: string
+  title: string
+  position: number
+  weekStarts: string[]
+}
+
+export interface YearlyGoal {
+  id: string
+  userId: string
+  year: number
+  title: string
+  objectives: GoalObjective[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CompletionEvent {
   id: string
   planItemId: string
