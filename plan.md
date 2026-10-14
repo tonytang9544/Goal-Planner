@@ -66,15 +66,28 @@ Raspberry Pi 2
 - Show household rankings by week and month on the competition view, with accessible charts and a non-chart summary.
 - Keep personal notes private. The TV page is an intentional shared surface for all users' daily target titles and completion state; limit it to that day's targets and the progress/streak information, without exposing notes or unrelated future plans.
 
-### 5. Test the important behaviors
+### 5. Add yearly goals and a goal wizard to the planner
+
+- Add private yearly goals for each user. Provide a view-only Yearly Goals page that lists the signed-in user's goals and their ordered objectives.
+- Add an objectives panel to the left of the month and week planner views. In month view, show objectives scheduled for weeks within the selected month; in week view, show the objectives assigned to the selected week.
+- Add a Goal Wizard entry point in the planner. Its first screen asks whether to modify an existing goal, add a goal, or remove a goal.
+- For adding a goal, collect its name and an ordered list of objectives. For modifying a goal, let the user select one of their goals and edit its name and ordered objectives. For removal, let the user select a goal and confirm its deletion.
+- For adding or modifying a goal, show a year map made of selectable square cells, one per calendar week, with visible month boundaries and labels. Use the planner's Monday-start week convention and distinguish weeks that overlap two months or calendar years.
+- Let the user assign each ordered objective to one or more week cells. Clicking a month label or month region selects or clears all week cells that overlap that month; individual week cells remain independently selectable so assignments can be refined afterward.
+- Translate the saved week assignments into the month/week objectives panels. When a week overlaps two months, show its assigned objective in both affected months and in that week's panel.
+- Keep goals and objective assignments private to their owner. Persist them in SQLite with migrations and owner-scoped APIs; edits from the wizard update the view-only yearly list and planner panels.
+- Make the wizard and week map usable with keyboard as well as pointer input, and clearly distinguish selected weeks, month boundaries, and weeks shared across months.
+
+### 6. Test the important behaviors
 
 - Unit-test date boundaries, month/week/day grouping, completion calculations, and score rules.
+- Test yearly goal ownership, objective ordering, week-to-month mapping (including cross-month and cross-year weeks), and wizard add/edit/remove flows.
 - Test account/session behavior and verify that one user cannot access another user's private plan data.
 - Test API operations and migrations against a temporary SQLite database.
 - Check responsive layouts at phone, desktop, and TV-sized resolutions, including keyboard navigation.
 - Verify the release binary and frontend build on the Pi's actual OS and architecture; the Pi 2 model and OS image can affect the correct target.
 
-### 6. Deploy and operate it on the Pi
+### 7. Deploy and operate it on the Pi
 
 - Build a release bundle containing the Rust binary and frontend assets.
 - Run it as a `systemd` service so it starts on boot and restarts if it exits.
