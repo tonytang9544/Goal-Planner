@@ -1,0 +1,55 @@
+export interface User {
+  id: string
+  username: string
+  displayName: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SessionInfo {
+  id: string
+  userId: string
+  expiresAt: string
+  createdAt: string
+}
+
+export interface PlanItem {
+  id: string
+  userId: string
+  /** Calendar date in YYYY-MM-DD form, interpreted in the household's local time. */
+  date: string
+  title: string
+  notes: string | null
+  dueAt: string | null
+  position: number
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CompletionEvent {
+  id: string
+  planItemId: string
+  changedByUserId: string
+  isCompleted: boolean
+  occurredAt: string
+}
+
+export interface MonthView {
+  userId: string
+  year: number
+  /** Calendar month, from 1 through 12. */
+  month: number
+  weeks: WeekView[]
+}
+
+export interface WeekView {
+  startDate: string
+  endDate: string
+  days: DayView[]
+}
+
+export interface DayView {
+  date: string
+  items: PlanItem[]
+}

@@ -1,8 +1,8 @@
-# Jira TV
+# Home Month Planner
 
-A lightweight, local-first shared board app for a household, designed to run on a Raspberry Pi and be accessed from a browser on the home Wi-Fi. It has a React/TypeScript board interface and a Rust API health endpoint. Board edits currently live in frontend memory and reset when the page reloads; API integration and persistence are planned next.
+A local-first household planner for a Raspberry Pi, accessed from browsers on the home Wi-Fi. The intended planner organizes each user's plans by month, week, and day, with a household progress chart. The Rust API currently has a health endpoint and planner data models; accounts, API integration, and persistence are planned next.
 
-The board UI includes sample household cards, add/edit/delete, labels, due dates, completion status, drag-and-drop, keyboard-accessible move and reorder controls, and a TV presentation mode.
+The frontend includes a month/week/day planner prototype with personal sample plans, completion controls, editing, date changes, keyboard-accessible reordering, and a TV summary view. The visible profile and plans are previews; planner data is currently held in browser memory, and account sign-in, household competition charts, and persistence are not implemented yet.
 
 ## Requirements
 
