@@ -127,6 +127,7 @@ function PlannerItem({
 }
 
 function App() {
+  const isTvMode = window.location.pathname.replace(/\/+$/, '') === '/tv'
   const [clock, setClock] = useState(() => new Date())
   const [items, setItems] = useState<PlanItem[]>([])
   const [user, setUser] = useState<User | null>(null)
@@ -134,7 +135,7 @@ function App() {
   const [householdTimeZone, setHouseholdTimeZone] = useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone,
   )
-  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(isTvMode ? 'signed-out' : 'loading')
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -143,7 +144,6 @@ function App() {
   const initialToday = dateKeyInTimeZone(clock, householdTimeZone)
   const [selectedDate, setSelectedDate] = useState(initialToday)
   const [view, setView] = useState<PlannerView>('month')
-  const [isTvMode, setIsTvMode] = useState(false)
   const [editingItem, setEditingItem] = useState<PlanItem | null | undefined>(undefined)
 
   useEffect(() => {
@@ -152,6 +152,7 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (isTvMode) return
     let active = true
     apiRequest<AuthResponse>('/api/session')
       .then((response) => {
@@ -171,7 +172,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [isTvMode])
 
   const today = household?.date ?? dateKeyInTimeZone(clock, householdTimeZone)
   const selectedDateValue = dateFromKey(selectedDate)
@@ -220,15 +221,19 @@ function App() {
   }, [selectedDate])
 
   useEffect(() => {
-    if (authStatus !== 'signed-in') return
+    if (!isTvMode && authStatus !== 'signed-in') return
     let active = true
     const refresh = async () => {
       try {
-        await Promise.all([refreshPlans(), refreshHousehold()])
+        if (isTvMode) {
+          await refreshHousehold()
+        } else {
+          await Promise.all([refreshPlans(), refreshHousehold()])
+        }
         if (active) setError(null)
       } catch (requestError) {
         if (!active) return
-        if (requestError instanceof Error && requestError.message === 'Sign in to continue') {
+        if (!isTvMode && requestError instanceof Error && requestError.message === 'Sign in to continue') {
           setUser(null)
           setItems([])
           setHousehold(null)
@@ -244,7 +249,7 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [authStatus, refreshPlans, refreshHousehold])
+  }, [authStatus, isTvMode, refreshPlans, refreshHousehold])
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -277,7 +282,6 @@ function App() {
       setUser(null)
       setItems([])
       setHousehold(null)
-      setIsTvMode(false)
       setAuthStatus('signed-out')
       setError(null)
     } catch (requestError) {
@@ -377,11 +381,11 @@ function App() {
         ? `${shortDateFormatter.format(weekStart)} – ${shortDateFormatter.format(weekDays[6])}`
         : longDateFormatter.format(selectedDateValue)
 
-  if (authStatus === 'loading') {
+  if (!isTvMode && authStatus === 'loading') {
     return <main className="auth-shell" aria-live="polite">Loading your planner…</main>
   }
 
-  if (authStatus === 'signed-out') {
+  if (!isTvMode && authStatus === 'signed-out') {
     return (
       <main className="auth-shell">
         <section className="auth-card" aria-labelledby="auth-title">
@@ -418,7 +422,7 @@ function App() {
                 required
                 minLength={3}
                 maxLength={32}
-                pattern="[A-Za-z0-9_\\-]+"
+                pattern={'[A-Za-z0-9_\\-]+'}
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
               />
@@ -464,13 +468,22 @@ function App() {
       {error && <p className="error-banner app-error" role="alert">{error}</p>}
       <header className="app-header">
         <div className="header-brand-date">
-          <a className="brand" href="/" aria-label="Home planner">
-            <span className="brand-mark" aria-hidden="true">h</span>
-            <span className="brand-copy">
-              <span className="brand-name">Home planner</span>
-              {isTvMode && <span className="brand-tagline">A little progress goes a long way.</span>}
+          {isTvMode ? (
+            <span className="brand" aria-label="Home planner">
+              <span className="brand-mark" aria-hidden="true">h</span>
+              <span className="brand-copy">
+                <span className="brand-name">Home planner</span>
+                <span className="brand-tagline">A little progress goes a long way.</span>
+              </span>
             </span>
-          </a>
+          ) : (
+            <a className="brand" href="/" aria-label="Home planner">
+              <span className="brand-mark" aria-hidden="true">h</span>
+              <span className="brand-copy">
+                <span className="brand-name">Home planner</span>
+              </span>
+            </a>
+          )}
           {isTvMode && (
             <h1 className="tv-date" id="tv-title" aria-live="polite">
               {longDateFormatter.format(dateFromKey(today))}
@@ -485,14 +498,6 @@ function App() {
             </div>
           )}
           {!isTvMode && <button className="button button-quiet sign-out-button" type="button" onClick={() => void signOut()}>Sign out</button>}
-          <button
-            className="button button-quiet tv-toggle"
-            type="button"
-            aria-pressed={isTvMode}
-            onClick={() => setIsTvMode((enabled) => !enabled)}
-          >
-            {isTvMode ? 'Exit TV view' : 'TV view'}
-          </button>
         </div>
       </header>
 

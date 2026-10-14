@@ -43,6 +43,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/login", post(login))
         .route("/api/logout", post(logout))
         .route("/api/session", get(session))
+        .route("/api/accounts", get(list_accounts))
+        .route("/api/accounts/{id}", axum::routing::delete(delete_account))
         .route("/api/plans", get(list_plans).post(create_plan))
         .route("/api/plans/{id}", put(update_plan).delete(delete_plan))
         .route("/api/plans/order", put(reorder_plans))
@@ -330,6 +332,48 @@ async fn session(
     }))
 }
 
+async fn list_accounts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<User>>, ApiError> {
+    authenticated_user(&state, &headers).await?;
+    let rows = sqlx::query(
+        "SELECT id, username, display_name, created_at, updated_at FROM users ORDER BY display_name COLLATE NOCASE",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let users = rows
+        .iter()
+        .map(user_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(users))
+}
+
+async fn delete_account(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    let (user, _) = authenticated_user(&state, &headers).await?;
+    if id == user.id {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "You cannot remove your own account",
+        ));
+    }
+
+    let mut transaction = state.pool.begin().await?;
+    let result = sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found());
+    }
+    transaction.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_plans(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -585,11 +629,7 @@ async fn reorder_plans(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn household_today(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<HouseholdToday>, ApiError> {
-    authenticated_user(&state, &headers).await?;
+async fn household_today(State(state): State<AppState>) -> Result<Json<HouseholdToday>, ApiError> {
     let today = Utc::now()
         .with_timezone(&state.household_timezone)
         .date_naive();

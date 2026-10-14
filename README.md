@@ -28,9 +28,9 @@ npm install
 npm run dev -- --host 0.0.0.0
 ```
 
-Open the URL printed by Vite (usually `http://localhost:5173`). Vite proxies `/api` requests to the Rust server. Other devices on the home network can use this computer's LAN IP address and port `5173`.
+Open the planner at the URL printed by Vite (usually `http://localhost:5173`). The read-only TV display is available directly at `/tv` (usually `http://localhost:5173/tv`); it does not require signing in and has no planner controls. Vite proxies `/api` requests to the Rust server. Other devices on the home network can use this computer's LAN IP address and port `5173`, adding `/tv` on the TV.
 
-Create the first account from the sign-in page. Registration is currently open to devices that can reach the app, so only run it on a trusted home network. Accounts have private plans; an authenticated shared TV view intentionally displays every household member's daily target titles, completion status, and progress streaks.
+Create the first account from the sign-in page. Registration is currently open to devices that can reach the app, so only run it on a trusted home network. Accounts have private plans; the shared TV page and its summary API intentionally display every household member's daily target titles, completion status, and progress streaks without authentication.
 
 ## Current scope
 
