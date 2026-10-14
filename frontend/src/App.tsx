@@ -1185,6 +1185,7 @@ function App() {
         </section>
       ) : isAccountManagement ? (
         <section className="account-management" aria-labelledby="account-management-title">
+          <a className="goal-back-link" href="/">← Back to planner</a>
           <p className="eyebrow">HOUSEHOLD SETTINGS</p>
           <h1 id="account-management-title">Manage accounts</h1>
           <p className="account-management-description">
