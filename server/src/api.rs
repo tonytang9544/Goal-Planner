@@ -44,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/logout", post(logout))
         .route("/api/session", get(session))
         .route("/api/accounts", get(list_accounts))
+        .route("/api/account/password", put(change_password))
         .route("/api/accounts/{id}", axum::routing::delete(delete_account))
         .route("/api/goals", get(list_goals).post(create_goal))
         .route("/api/goals/{id}", put(update_goal).delete(delete_goal))
@@ -123,6 +124,13 @@ struct AccountInput {
     #[serde(default)]
     display_name: String,
     password: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChangePasswordInput {
+    current_password: String,
+    new_password: String,
 }
 
 #[derive(Serialize)]
@@ -417,6 +425,46 @@ async fn list_accounts(
         .map(user_from_row)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(users))
+}
+
+async fn change_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<ChangePasswordInput>,
+) -> Result<StatusCode, ApiError> {
+    let (user, _) = authenticated_user(&state, &headers).await?;
+    validate_password(&input.new_password)?;
+    let row = sqlx::query("SELECT password_hash FROM users WHERE id = ?")
+        .bind(user.id.to_string())
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(ApiError::unauthorized)?;
+    let password_hash: String = row.try_get("password_hash").map_err(ApiError::from)?;
+    if !verify_password(input.current_password, password_hash).await? {
+        return Err(ApiError::bad_request("Current password is incorrect"));
+    }
+
+    let token = session_token(&headers).ok_or_else(ApiError::unauthorized)?;
+    let token_hash = hash_token(&token);
+    let new_password_hash = hash_password(input.new_password).await?;
+    let now = timestamp(Utc::now());
+    let mut transaction = state.pool.begin().await?;
+    sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+        .bind(new_password_hash)
+        .bind(&now)
+        .bind(user.id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query(
+        "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL",
+    )
+    .bind(now)
+    .bind(user.id.to_string())
+    .bind(token_hash)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete_account(
@@ -1394,9 +1442,9 @@ fn validate_display_name(value: &str) -> Result<String, ApiError> {
 }
 
 fn validate_password(password: &str) -> Result<(), ApiError> {
-    if !(12..=128).contains(&password.len()) {
+    if !(4..=128).contains(&password.len()) {
         return Err(ApiError::bad_request(
-            "Password must be between 12 and 128 bytes",
+            "Password must be between 4 and 128 bytes",
         ));
     }
     Ok(())

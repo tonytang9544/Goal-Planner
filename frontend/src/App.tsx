@@ -570,9 +570,13 @@ function App() {
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null)
+  const [changingPassword, setChangingPassword] = useState(false)
   const initialToday = dateKeyInTimeZone(clock, householdTimeZone)
   const [selectedDate, setSelectedDate] = useState(initialToday)
   const [view, setView] = useState<PlannerView>('month')
@@ -775,6 +779,35 @@ function App() {
     }
   }
 
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+    setNotice(null)
+    if (newPassword !== confirmNewPassword) {
+      setError('New password and confirmation do not match')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      await apiRequest<void>('/api/account/password', {
+        method: 'PUT',
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      setNotice('Your password was changed. Other signed-in sessions have been signed out.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not change password')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   async function saveGoal(goalId: string | null, payload: GoalPayload) {
     const saved = await apiRequest<YearlyGoal>(
       goalId ? `/api/goals/${goalId}` : '/api/goals',
@@ -959,13 +992,13 @@ function App() {
               <input
                 autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
                 required
-                minLength={12}
+                minLength={4}
                 maxLength={128}
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
-              {authMode === 'register' && <small className="field-hint">Use at least 12 characters.</small>}
+              {authMode === 'register' && <small className="field-hint">Use at least 4 characters.</small>}
             </label>
             <button className="button button-primary auth-submit" type="submit">
               {authMode === 'register' ? 'Create account' : 'Sign in'}
@@ -1193,6 +1226,50 @@ function App() {
             You cannot remove your own account.
           </p>
           {notice && <p className="success-banner" role="status">{notice}</p>}
+          <section className="account-password-section" aria-labelledby="account-password-title">
+            <h2 id="account-password-title">Change your password</h2>
+            <p>Enter your current password, then choose a new password of at least 4 characters.</p>
+            <form className="account-password-form" onSubmit={(event) => void changePassword(event)}>
+              <label className="form-field">
+                <span>Current password</span>
+                <input
+                  autoComplete="current-password"
+                  required
+                  maxLength={128}
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+              </label>
+              <label className="form-field">
+                <span>New password</span>
+                <input
+                  autoComplete="new-password"
+                  required
+                  minLength={4}
+                  maxLength={128}
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </label>
+              <label className="form-field">
+                <span>Confirm new password</span>
+                <input
+                  autoComplete="new-password"
+                  required
+                  minLength={4}
+                  maxLength={128}
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                />
+              </label>
+              <button className="button button-primary" type="submit" disabled={changingPassword}>
+                {changingPassword ? 'Changing password…' : 'Change password'}
+              </button>
+            </form>
+          </section>
           <div className="account-list" aria-live="polite">
             {accounts.map((account) => {
               const isCurrentAccount = account.id === user?.id

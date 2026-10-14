@@ -36,7 +36,7 @@ Create the first account from the sign-in page. Registration is currently open t
 
 Accounts use Argon2id password hashes and opaque, HTTP-only, same-site session cookies that expire after 14 days. The API scopes plan reads and writes to the signed-in user. Plans, completion changes, and historical plan snapshots are stored in SQLite. The planner and TV view poll the server every 15 seconds.
 
-Signed-in users can open `/accounts` from the planner to view household accounts and permanently remove another account. An account deletion also removes that user's sessions, plans, and progress history through SQLite foreign-key cascades in a transaction. The currently signed-in account cannot be removed from this page. This permission is shared by all signed-in users, not limited to an administrator.
+Signed-in users can open `/accounts` from the planner to view household accounts, change their own password, and permanently remove another account. Password changes require the current password and sign out the user's other active sessions. An account deletion also removes that user's sessions, plans, and progress history through SQLite foreign-key cascades in a transaction. The currently signed-in account cannot be removed from this page. This permission is shared by all signed-in users, not limited to an administrator.
 
 The planner also includes a read-only yearly-goals view. Use the Goal wizard to add, modify, or remove private yearly goals, order their objectives, and assign those objectives to Monday-start weeks on the year map. Month and week views show the objectives assigned to the visible period; week cells that overlap month boundaries appear in each affected month.
 
