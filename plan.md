@@ -40,6 +40,7 @@ Raspberry Pi 2
 - On the TV page, show today's target list for every household user: each person's name, target titles, due times when set, completion state, and completed/total count. Keep private notes off the shared display.
 - Show a per-user daily progress bar and separate streak counters for (1) consecutive target-days when every target was completed and (2) consecutive target-days when at least one target was completed.
 - Define a target-day as a local calendar day with at least one target. A day with no targets does not increase a streak and breaks a consecutive target-day streak; display this rule so an empty day is not mistaken for a completed day.
+- Treat today as in progress: count it toward a streak as soon as its relevant completion condition is met; until then, show the prior streak without breaking it. Once a day has ended, an empty or incomplete target-day breaks the applicable streak.
 - Use one configured household timezone for day boundaries, due dates, and streak calculations. Mark today's date clearly, and refresh the shared display periodically so it stays current.
 - Include keyboard-accessible controls and clear empty states for days with no plans.
 

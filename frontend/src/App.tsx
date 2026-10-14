@@ -1,164 +1,79 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { PlanItemEditor } from './components/PlanItemEditor'
-import type { PlanItem } from './types/planner'
+import type { HouseholdToday, PlanItem, User } from './types/planner'
 import './App.css'
 
 type PlannerView = 'month' | 'week' | 'day'
+type AuthStatus = 'loading' | 'signed-out' | 'signed-in'
 
-const currentUserId = 'local-user'
-const currentUserName = 'Alex Morgan'
-const householdUsers = [
-  { id: currentUserId, displayName: currentUserName, initials: 'A' },
-  { id: 'user-jamie', displayName: 'Jamie Lee', initials: 'J' },
-  { id: 'user-sam', displayName: 'Sam Patel', initials: 'S' },
-]
 const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const householdTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
-const longDateFormatter = new Intl.DateTimeFormat(undefined, {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
-})
-const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-})
+const refreshIntervalMs = 15_000
+
+interface AuthResponse {
+  user: User
+  expiresAt: string
+  householdTimeZone: string
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'same-origin',
+    headers: {
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `Request failed (${response.status})`)
+  }
+  if (response.status === 204) return undefined as T
+  return response.json() as Promise<T>
+}
 
 function dateKey(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function currentTimestamp(): string {
-  return new Date().toISOString()
-}
-
-function localTimeAt(date: Date, hour: number, minute: number): string {
-  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute)
-  return value.toISOString()
 }
 
 function dateFromKey(value: string): Date {
   const [year, month, day] = value.split('-').map(Number)
-  return new Date(year, month - 1, day)
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function dateKeyInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone,
+  }).formatToParts(date)
+  const part = (type: string) => parts.find((entry) => entry.type === type)?.value
+  const year = part('year')
+  const month = part('month')
+  const day = part('day')
+  if (!year || !month || !day) throw new Error('Could not determine the date')
+  return `${year}-${month}-${day}`
 }
 
 function addDays(date: Date, amount: number): Date {
-  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  result.setDate(result.getDate() + amount)
+  const result = new Date(date)
+  result.setUTCDate(result.getUTCDate() + amount)
   return result
 }
 
 function startOfWeek(date: Date): Date {
-  const offset = (date.getDay() + 6) % 7
+  const offset = (date.getUTCDay() + 6) % 7
   return addDays(date, -offset)
-}
-
-function createSeedItems(today: Date): PlanItem[] {
-  const createdAt = today.toISOString()
-  const history = [
-    {
-      userId: currentUserId,
-      days: ['all', 'all', 'some', 'some', 'none', 'all', 'all'],
-      titles: ['Water the plants', 'Stretch for ten minutes'],
-    },
-    {
-      userId: 'user-jamie',
-      days: ['some', 'all', 'some', 'all', 'some', 'none', 'all'],
-      titles: ['Read a chapter', 'Take a lunch break'],
-    },
-    {
-      userId: 'user-sam',
-      days: ['all', 'empty', 'all', 'some', 'all', 'all', 'some'],
-      titles: ['Morning walk', 'Practice guitar'],
-    },
-  ] as const
-
-  const pastItems = history.flatMap(({ userId, days, titles }) =>
-    days.flatMap((status, historyIndex) => {
-      if (status === 'empty') return []
-      const date = addDays(today, -(historyIndex + 1))
-      const dayItems = status === 'all'
-        ? titles.map(() => true)
-        : status === 'some'
-          ? [true, false]
-          : [false, false]
-      return titles.slice(0, dayItems.length).map((title, itemIndex) => ({
-        id: `history-${userId}-${historyIndex}-${itemIndex}`,
-        userId,
-        date: dateKey(date),
-        title,
-        notes: null,
-        dueAt: null,
-        position: itemIndex,
-        completedAt: dayItems[itemIndex] ? localTimeAt(date, 18, 0) : null,
-        createdAt,
-        updatedAt: createdAt,
-      }))
-    }),
-  )
-
-  const todayEntries = [
-    { userId: currentUserId, title: 'Water the herbs', notes: 'The basil is looking thirsty.', hour: 9, minute: 0, completed: true },
-    { userId: currentUserId, title: 'Pick up groceries', notes: 'Milk, oats, and fresh fruit.', hour: 17, minute: 30, completed: false },
-    { userId: 'user-jamie', title: 'Finish the book chapter', notes: null, hour: 20, minute: 0, completed: false },
-    { userId: 'user-jamie', title: 'Prepare lunch for tomorrow', notes: null, hour: 21, minute: 0, completed: true },
-    { userId: 'user-sam', title: 'Take a walk after work', notes: null, hour: 18, minute: 0, completed: true },
-    { userId: 'user-sam', title: 'Water the balcony plants', notes: null, hour: 19, minute: 0, completed: true },
-  ]
-  const todayItems = todayEntries.map((entry, index) => ({
-    id: `today-plan-${index + 1}`,
-    userId: entry.userId,
-    date: dateKey(today),
-    title: entry.title,
-    notes: entry.notes,
-    dueAt: localTimeAt(today, entry.hour, entry.minute),
-    position: todayEntries.filter((item) => item.userId === entry.userId).findIndex((item) => item === entry),
-    completedAt: entry.completed ? localTimeAt(today, Math.max(8, entry.hour - 1), entry.minute) : null,
-    createdAt,
-    updatedAt: createdAt,
-  }))
-
-  const alexFutureEntries = [
-    { offset: 1, title: 'Go for an evening walk', notes: null },
-    { offset: 3, title: 'Call Mum', notes: 'Ask how the garden is doing.' },
-    { offset: 5, title: 'Tidy the entryway', notes: null },
-  ].map((entry, index) => ({
-    id: `future-plan-${index + 1}`,
-    userId: currentUserId,
-    date: dateKey(addDays(today, entry.offset)),
-    title: entry.title,
-    notes: entry.notes,
-    dueAt: null,
-    position: index,
-    completedAt: null,
-    createdAt,
-    updatedAt: createdAt,
-  }))
-
-  return [...pastItems, ...todayItems, ...alexFutureEntries]
 }
 
 function itemsForDate(items: PlanItem[], date: string): PlanItem[] {
   return items
     .filter((item) => item.date === date)
     .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt))
-}
-
-function streakLength(items: PlanItem[], userId: string, today: string, predicate: (dayItems: PlanItem[]) => boolean): number {
-  let streak = 0
-  let date = addDays(dateFromKey(today), -1)
-
-  while (true) {
-    const dayItems = itemsForDate(items.filter((item) => item.userId === userId), dateKey(date))
-    if (dayItems.length === 0 || !predicate(dayItems)) return streak
-    streak += 1
-    date = addDays(date, -1)
-  }
 }
 
 function PlannerItem({
@@ -213,8 +128,19 @@ function PlannerItem({
 
 function App() {
   const [clock, setClock] = useState(() => new Date())
-  const [items, setItems] = useState(() => createSeedItems(clock))
-  const initialToday = dateKey(clock)
+  const [items, setItems] = useState<PlanItem[]>([])
+  const [user, setUser] = useState<User | null>(null)
+  const [household, setHousehold] = useState<HouseholdToday | null>(null)
+  const [householdTimeZone, setHouseholdTimeZone] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  )
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const initialToday = dateKeyInTimeZone(clock, householdTimeZone)
   const [selectedDate, setSelectedDate] = useState(initialToday)
   const [view, setView] = useState<PlannerView>('month')
   const [isTvMode, setIsTvMode] = useState(false)
@@ -225,43 +151,145 @@ function App() {
     return () => window.clearInterval(timer)
   }, [])
 
-  const today = dateKey(clock)
+  useEffect(() => {
+    let active = true
+    apiRequest<AuthResponse>('/api/session')
+      .then((response) => {
+        if (!active) return
+        setUser(response.user)
+        setHouseholdTimeZone(response.householdTimeZone)
+        setSelectedDate(dateKeyInTimeZone(new Date(), response.householdTimeZone))
+        setAuthStatus('signed-in')
+      })
+      .catch((requestError: unknown) => {
+        if (!active) return
+        if (requestError instanceof Error && requestError.message !== 'Sign in to continue') {
+          setError(requestError.message)
+        }
+        setAuthStatus('signed-out')
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const today = household?.date ?? dateKeyInTimeZone(clock, householdTimeZone)
   const selectedDateValue = dateFromKey(selectedDate)
-  const monthStart = new Date(selectedDateValue.getFullYear(), selectedDateValue.getMonth(), 1)
+  const monthStart = new Date(Date.UTC(selectedDateValue.getUTCFullYear(), selectedDateValue.getUTCMonth(), 1))
   const monthGridStart = startOfWeek(monthStart)
   const monthDays = Array.from({ length: 42 }, (_, index) => addDays(monthGridStart, index))
   const weekStart = startOfWeek(selectedDateValue)
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
-  const personalItems = items.filter((item) => item.userId === currentUserId)
-  const selectedItems = itemsForDate(personalItems, selectedDate)
+  const selectedItems = itemsForDate(items, selectedDate)
   const completedCount = selectedItems.filter((item) => item.completedAt).length
-  const householdProgress = householdUsers.map((user) => {
-    const targets = itemsForDate(items.filter((item) => item.userId === user.id), today)
-    const completed = targets.filter((item) => item.completedAt).length
-    return {
-      ...user,
-      targets,
-      completed,
-      allTargetsStreak: streakLength(
-        items,
-        user.id,
-        today,
-        (dayItems) => dayItems.every((item) => item.completedAt !== null),
-      ),
-      atLeastOneStreak: streakLength(
-        items,
-        user.id,
-        today,
-        (dayItems) => dayItems.some((item) => item.completedAt !== null),
-      ),
-    }
+  const monthFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
   })
+  const longDateFormatter = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+  const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+
+  const refreshHousehold = useCallback(async () => {
+    const summary = await apiRequest<HouseholdToday>('/api/household/today')
+    setHousehold(summary)
+    setHouseholdTimeZone(summary.timeZone)
+  }, [])
+
+  const refreshPlans = useCallback(async () => {
+    const monthStart = dateFromKey(selectedDate)
+    const gridStart = startOfWeek(
+      new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1)),
+    )
+    const start = dateKey(gridStart)
+    const end = dateKey(addDays(gridStart, 41))
+    const result = await apiRequest<PlanItem[]>(
+      `/api/plans?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+    )
+    setItems(result)
+  }, [selectedDate])
+
+  useEffect(() => {
+    if (authStatus !== 'signed-in') return
+    let active = true
+    const refresh = async () => {
+      try {
+        await Promise.all([refreshPlans(), refreshHousehold()])
+        if (active) setError(null)
+      } catch (requestError) {
+        if (!active) return
+        if (requestError instanceof Error && requestError.message === 'Sign in to continue') {
+          setUser(null)
+          setItems([])
+          setHousehold(null)
+          setAuthStatus('signed-out')
+        } else {
+          setError(requestError instanceof Error ? requestError.message : 'Could not refresh planner data')
+        }
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), refreshIntervalMs)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [authStatus, refreshPlans, refreshHousehold])
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+    try {
+      const response = await apiRequest<AuthResponse>(
+        authMode === 'register' ? '/api/register' : '/api/login',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            username,
+            password,
+            ...(authMode === 'register' ? { displayName } : {}),
+          }),
+        },
+      )
+      setUser(response.user)
+      setHouseholdTimeZone(response.householdTimeZone)
+      setSelectedDate(dateKeyInTimeZone(new Date(), response.householdTimeZone))
+      setAuthStatus('signed-in')
+      setPassword('')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not sign in')
+    }
+  }
+
+  async function signOut() {
+    try {
+      await apiRequest<void>('/api/logout', { method: 'POST' })
+      setUser(null)
+      setItems([])
+      setHousehold(null)
+      setIsTvMode(false)
+      setAuthStatus('signed-out')
+      setError(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not sign out')
+    }
+  }
 
   function navigatePeriod(direction: -1 | 1) {
     const nextDate = new Date(selectedDateValue)
-    if (view === 'month') nextDate.setMonth(nextDate.getMonth() + direction, 1)
-    else if (view === 'week') nextDate.setDate(nextDate.getDate() + direction * 7)
-    else nextDate.setDate(nextDate.getDate() + direction)
+    if (view === 'month') nextDate.setUTCMonth(nextDate.getUTCMonth() + direction, 1)
+    else if (view === 'week') nextDate.setUTCDate(nextDate.getUTCDate() + direction * 7)
+    else nextDate.setUTCDate(nextDate.getUTCDate() + direction)
     setSelectedDate(dateKey(nextDate))
   }
 
@@ -270,90 +298,71 @@ function App() {
     setView(nextView)
   }
 
-  function saveItem(values: Omit<PlanItem, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'position'>) {
-    const now = currentTimestamp()
-    setItems((current) => {
-      const existing = editingItem
-        ? current.find((item) => item.id === editingItem.id)
-        : undefined
-      const destinationItems = current.filter(
-        (item) => item.userId === currentUserId && item.date === values.date && item.id !== existing?.id,
+  async function saveItem(values: Omit<PlanItem, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'position'>) {
+    try {
+      const saved = await apiRequest<PlanItem>(
+        editingItem ? `/api/plans/${editingItem.id}` : '/api/plans',
+        {
+          method: editingItem ? 'PUT' : 'POST',
+          body: JSON.stringify(values),
+        },
       )
-      const updatedItem: PlanItem = {
-        ...values,
-        id: existing?.id ?? `plan-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        userId: currentUserId,
-        position: existing?.date === values.date ? existing.position : destinationItems.length,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      }
-      return [
-        ...current.filter((item) => item.id !== existing?.id),
-        updatedItem,
-      ].map((item) => {
-        if (item.userId === currentUserId && item.date === existing?.date && item.id !== updatedItem.id) {
-          const remaining = itemsForDate(
-            current.filter((other) => other.userId === currentUserId && other.date === existing.date && other.id !== existing.id),
-            existing.date,
-          )
-          const oldPosition = remaining.findIndex((other) => other.id === item.id)
-          return { ...item, position: oldPosition }
-        }
-        return item
+      setItems((current) => [...current.filter((item) => item.id !== saved.id), saved])
+      setSelectedDate(saved.date)
+      setEditingItem(undefined)
+      setError(null)
+      await refreshHousehold()
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not save plan')
+    }
+  }
+
+  async function toggleCompletion(item: PlanItem) {
+    try {
+      const updated = await apiRequest<PlanItem>(`/api/plans/${item.id}/completion`, {
+        method: 'PATCH',
+        body: JSON.stringify({ completed: !item.completedAt }),
       })
-    })
-    setSelectedDate(values.date)
-    setEditingItem(undefined)
+      setItems((current) => current.map((candidate) => candidate.id === item.id ? updated : candidate))
+      await refreshHousehold()
+      setError(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not update completion')
+    }
   }
 
-  function toggleCompletion(item: PlanItem) {
-    const now = currentTimestamp()
-    setItems((current) =>
-      current.map((candidate) =>
-        candidate.id === item.id
-          ? { ...candidate, completedAt: candidate.completedAt ? null : now, updatedAt: now }
-          : candidate,
-      ),
-    )
+  async function deleteItem(item: PlanItem) {
+    try {
+      await apiRequest<void>(`/api/plans/${item.id}`, { method: 'DELETE' })
+      setItems((current) => current.filter((candidate) => candidate.id !== item.id))
+      await refreshHousehold()
+      setError(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not delete plan')
+    }
   }
 
-  function deleteItem(item: PlanItem) {
-    setItems((current) =>
-      current
-        .filter((candidate) => candidate.id !== item.id)
-        .map((candidate) =>
-          candidate.userId === item.userId && candidate.date === item.date
-            ? {
-                ...candidate,
-                position: itemsForDate(
-                  current.filter((other) => other.userId === item.userId && other.date === item.date && other.id !== item.id),
-                  item.date,
-                ).findIndex((other) => other.id === candidate.id),
-              }
-            : candidate,
-        ),
-    )
-  }
-
-  function reorderItem(item: PlanItem, direction: -1 | 1) {
-    setItems((current) => {
-      const dayItems = itemsForDate(
-        current.filter((candidate) => candidate.userId === item.userId),
-        item.date,
-      )
-      const index = dayItems.findIndex((candidate) => candidate.id === item.id)
-      const targetIndex = Math.max(0, Math.min(index + direction, dayItems.length - 1))
-      if (index === targetIndex) return current
-      const reordered = [...dayItems]
-      const [moved] = reordered.splice(index, 1)
-      reordered.splice(targetIndex, 0, moved)
-      const positions = new Map(reordered.map((candidate, position) => [candidate.id, position]))
-      return current.map((candidate) =>
-        candidate.userId === item.userId && positions.has(candidate.id)
-          ? { ...candidate, position: positions.get(candidate.id)! }
-          : candidate,
-      )
-    })
+  async function reorderItem(item: PlanItem, direction: -1 | 1) {
+    const dayItems = itemsForDate(items, item.date)
+    const index = dayItems.findIndex((candidate) => candidate.id === item.id)
+    const targetIndex = Math.max(0, Math.min(index + direction, dayItems.length - 1))
+    if (index === targetIndex) return
+    const reordered = [...dayItems]
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(targetIndex, 0, moved)
+    try {
+      await apiRequest<void>('/api/plans/order', {
+        method: 'PUT',
+        body: JSON.stringify({ date: item.date, itemIds: reordered.map((candidate) => candidate.id) }),
+      })
+      setItems((current) => current.map((candidate) => {
+        const position = reordered.findIndex((ordered) => ordered.id === candidate.id)
+        return position < 0 ? candidate : { ...candidate, position }
+      }))
+      setError(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not reorder plans')
+    }
   }
 
   function openNewItem(date = selectedDate) {
@@ -368,8 +377,91 @@ function App() {
         ? `${shortDateFormatter.format(weekStart)} – ${shortDateFormatter.format(weekDays[6])}`
         : longDateFormatter.format(selectedDateValue)
 
+  if (authStatus === 'loading') {
+    return <main className="auth-shell" aria-live="polite">Loading your planner…</main>
+  }
+
+  if (authStatus === 'signed-out') {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card" aria-labelledby="auth-title">
+          <a className="brand auth-brand" href="/" aria-label="Home planner">
+            <span className="brand-mark" aria-hidden="true">h</span>
+            <span className="brand-copy">
+              <span className="brand-name">Home planner</span>
+              <span className="brand-tagline">A little progress goes a long way.</span>
+            </span>
+          </a>
+          <p className="eyebrow">{authMode === 'register' ? 'START YOUR HOUSEHOLD PLANNER' : 'WELCOME BACK'}</p>
+          <h1 id="auth-title">{authMode === 'register' ? 'Create your account' : 'Sign in'}</h1>
+          <p className="auth-description">
+            Your plans are private to your account. The shared TV view displays daily target titles and progress.
+          </p>
+          {error && <p className="error-banner" role="alert">{error}</p>}
+          <form className="auth-form" onSubmit={submitAuth}>
+            {authMode === 'register' && (
+              <label className="form-field">
+                <span>Your name</span>
+                <input
+                  autoComplete="name"
+                  required
+                  maxLength={60}
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </label>
+            )}
+            <label className="form-field">
+              <span>Username</span>
+              <input
+                autoComplete="username"
+                required
+                minLength={3}
+                maxLength={32}
+                pattern="[A-Za-z0-9_\\-]+"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>Password</span>
+              <input
+                autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                required
+                minLength={12}
+                maxLength={128}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              {authMode === 'register' && <small className="field-hint">Use at least 12 characters.</small>}
+            </label>
+            <button className="button button-primary auth-submit" type="submit">
+              {authMode === 'register' ? 'Create account' : 'Sign in'}
+            </button>
+          </form>
+          <p className="auth-switch">
+            {authMode === 'register' ? 'Already have an account?' : 'New to this household planner?'}
+            {' '}
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode((mode) => mode === 'login' ? 'register' : 'login')
+                setError(null)
+              }}
+            >
+              {authMode === 'register' ? 'Sign in' : 'Create an account'}
+            </button>
+          </p>
+          <p className="local-network-note">Account creation is open to devices that can reach this home-network app.</p>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className={`app-shell${isTvMode ? ' tv-mode' : ''}`}>
+      {error && <p className="error-banner app-error" role="alert">{error}</p>}
       <header className="app-header">
         <div className="header-brand-date">
           <a className="brand" href="/" aria-label="Home planner">
@@ -387,11 +479,12 @@ function App() {
         </div>
         <div className="header-actions">
           {!isTvMode && (
-            <div className="profile-chip" aria-label={`Signed in as ${currentUserName}`}>
-              <span className="avatar" aria-hidden="true">A</span>
-              <span className="profile-name">{currentUserName}<small>Preview profile</small></span>
+            <div className="profile-chip" aria-label={`Signed in as ${user?.displayName ?? ''}`}>
+              <span className="avatar" aria-hidden="true">{user?.displayName.slice(0, 1).toUpperCase()}</span>
+              <span className="profile-name">{user?.displayName}<small>@{user?.username}</small></span>
             </div>
           )}
+          {!isTvMode && <button className="button button-quiet sign-out-button" type="button" onClick={() => void signOut()}>Sign out</button>}
           <button
             className="button button-quiet tv-toggle"
             type="button"
@@ -406,19 +499,19 @@ function App() {
       {isTvMode ? (
         <section className="tv-summary" aria-labelledby="tv-title">
           <div className="tv-household-grid">
-            {householdProgress.map((user) => {
-              const progress = user.targets.length
-                ? Math.round((user.completed / user.targets.length) * 100)
+            {(household?.users ?? []).map((member) => {
+              const progress = member.targets.length
+                ? Math.round((member.completed / member.targets.length) * 100)
                 : 0
               return (
-                <article className="tv-user-card" key={user.id} aria-labelledby={`tv-user-${user.id}`}>
+                <article className="tv-user-card" key={member.user.id} aria-labelledby={`tv-user-${member.user.id}`}>
                   <header className="tv-user-header">
-                    <span className="avatar avatar-large" aria-hidden="true">{user.initials}</span>
+                    <span className="avatar avatar-large" aria-hidden="true">{member.user.displayName.slice(0, 1).toUpperCase()}</span>
                     <div className="tv-user-identity">
-                      <h2 id={`tv-user-${user.id}`}>{user.displayName}</h2>
+                      <h2 id={`tv-user-${member.user.id}`}>{member.user.displayName}</h2>
                       <span>
-                        {user.targets.length
-                          ? `${user.completed} of ${user.targets.length} targets complete`
+                        {member.targets.length
+                          ? `${member.completed} of ${member.targets.length} targets complete`
                           : 'No targets today'}
                       </span>
                     </div>
@@ -427,7 +520,7 @@ function App() {
                   <div
                     className="progress-track"
                     role="progressbar"
-                    aria-label={`${user.displayName}'s targets completed today`}
+                    aria-label={`${member.user.displayName}'s targets completed today`}
                     aria-valuenow={progress}
                     aria-valuemin={0}
                     aria-valuemax={100}
@@ -435,18 +528,18 @@ function App() {
                     <span style={{ width: `${progress}%` }} />
                   </div>
 
-                  <div className="streak-grid" aria-label={`${user.displayName}'s streaks through yesterday`}>
+                  <div className="streak-grid" aria-label={`${member.user.displayName}'s streaks through yesterday`}>
                     <div className="streak-tile">
                       <span className="streak-icon" aria-hidden="true">✦</span>
                       <div>
-                        <strong>{user.allTargetsStreak} <small>{user.allTargetsStreak === 1 ? 'day' : 'days'}</small></strong>
+                        <strong>{member.allTargetsStreak} <small>{member.allTargetsStreak === 1 ? 'day' : 'days'}</small></strong>
                         <span>All targets cleared</span>
                       </div>
                     </div>
                     <div className="streak-tile">
                       <span className="streak-icon streak-icon-soft" aria-hidden="true">↗</span>
                       <div>
-                        <strong>{user.atLeastOneStreak} <small>{user.atLeastOneStreak === 1 ? 'day' : 'days'}</small></strong>
+                        <strong>{member.atLeastOneStreak} <small>{member.atLeastOneStreak === 1 ? 'day' : 'days'}</small></strong>
                         <span>At least one done</span>
                       </div>
                     </div>
@@ -454,7 +547,7 @@ function App() {
 
                   <div className="tv-target-list">
                     <h3>Today's targets</h3>
-                    {user.targets.length ? user.targets.map((item) => (
+                    {member.targets.length ? member.targets.map((item) => (
                       <div className={`tv-plan-row${item.completedAt ? ' is-completed' : ''}`} key={item.id}>
                         <span className="tv-check" aria-hidden="true">{item.completedAt ? '✓' : ''}</span>
                         <span className="tv-target-title">{item.title}</span>
@@ -535,8 +628,8 @@ function App() {
                   <div className="month-grid">
                     {monthDays.map((date) => {
                       const key = dateKey(date)
-                      const dayItems = itemsForDate(personalItems, key)
-                      const isOutsideMonth = date.getMonth() !== selectedDateValue.getMonth()
+                      const dayItems = itemsForDate(items, key)
+                      const isOutsideMonth = date.getUTCMonth() !== selectedDateValue.getUTCMonth()
                       return (
                         <button
                           className={`month-day${isOutsideMonth ? ' outside-month' : ''}${key === today ? ' is-today' : ''}${key === selectedDate ? ' is-selected' : ''}`}
@@ -546,7 +639,7 @@ function App() {
                           aria-pressed={key === selectedDate}
                           onClick={() => selectDate(date, 'day')}
                         >
-                          <span className="month-day-number">{date.getDate()}</span>
+                          <span className="month-day-number">{date.getUTCDate()}</span>
                           {dayItems.length > 0 && (
                             <span className="month-day-summary">
                               <span className="day-dot" aria-hidden="true" />
@@ -572,7 +665,7 @@ function App() {
                 <div className="week-planner">
                   {weekDays.map((date) => {
                     const key = dateKey(date)
-                    const dayItems = itemsForDate(personalItems, key)
+                    const dayItems = itemsForDate(items, key)
                     return (
                       <section className={`week-day${key === today ? ' is-today' : ''}`} key={key}>
                         <button className="week-day-heading" type="button" onClick={() => selectDate(date, 'day')}>

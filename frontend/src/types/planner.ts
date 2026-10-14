@@ -53,3 +53,25 @@ export interface DayView {
   date: string
   items: PlanItem[]
 }
+
+export interface HouseholdTarget {
+  id: string
+  title: string
+  dueAt: string | null
+  completedAt: string | null
+  position: number
+}
+
+export interface HouseholdUserDay {
+  user: User
+  targets: HouseholdTarget[]
+  completed: number
+  allTargetsStreak: number
+  atLeastOneStreak: number
+}
+
+export interface HouseholdToday {
+  date: string
+  timeZone: string
+  users: HouseholdUserDay[]
+}

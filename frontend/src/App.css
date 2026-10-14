@@ -9,6 +9,98 @@
   padding: 0 clamp(18px, 5vw, 72px) 44px;
 }
 
+.auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  padding: 32px;
+  border: 1px solid #e6e8e1;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgb(52 68 56 / 7%);
+}
+
+.auth-brand {
+  margin-bottom: 34px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  color: #26382f;
+  font-size: 30px;
+  letter-spacing: -0.05em;
+}
+
+.auth-description {
+  margin: 9px 0 22px;
+  color: #78827a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.auth-form {
+  margin-top: 20px;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-switch {
+  margin: 19px 0 0;
+  color: #7d877e;
+  font-size: 12px;
+  text-align: center;
+}
+
+.auth-switch button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #426c58;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.field-hint,
+.local-network-note {
+  color: #8c958d;
+  font-size: 10px;
+}
+
+.local-network-note {
+  margin: 16px 0 0;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.error-banner {
+  padding: 10px 12px;
+  border: 1px solid #f0d0cb;
+  border-radius: 8px;
+  background: #fff4f1;
+  color: #98483e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.app-error {
+  margin: 10px 0 0;
+}
+
+.sign-out-button {
+  min-height: 35px;
+  padding: 0 11px;
+  font-size: 11px;
+}
+
 .app-header {
   display: flex;
   min-height: 76px;
@@ -1151,6 +1243,12 @@
     min-height: 35px;
     padding: 0 9px;
     font-size: 11px;
+  }
+
+  .sign-out-button {
+    min-height: 33px;
+    padding: 0 7px;
+    font-size: 10px;
   }
 
   .tv-date {
