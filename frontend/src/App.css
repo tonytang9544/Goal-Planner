@@ -298,14 +298,12 @@
   font-size: 15px;
 }
 
-.planner-heading-actions,
 .wizard-actions {
   display: flex;
   align-items: center;
   gap: 9px;
 }
 
-.add-plan-button > span,
 .day-heading .button > span {
   font-size: 19px;
   font-weight: 400;
@@ -761,12 +759,14 @@
 
 .objective-draft > .objective-select {
   border-radius: 50%;
-  background: #e8f1e5;
+  border-color: var(--objective-color);
+  background: var(--objective-color);
+  color: #fff;
 }
 
 .objective-draft > .objective-select[aria-pressed="true"] {
-  background: #426c58;
-  color: #fff;
+  outline: 2px solid var(--objective-color);
+  outline-offset: 2px;
 }
 
 .year-map {
@@ -781,34 +781,35 @@
   line-height: 1.5;
 }
 
-.year-map-scroll {
-  overflow-x: auto;
-  padding: 6px 0 12px;
-  overscroll-behavior-x: contain;
-}
-
 .year-map-content {
-  width: max-content;
+  display: grid;
+  gap: 4px;
   padding-top: 5px;
 }
 
-.year-map-months,
-.year-map-weeks {
+.year-map-month-row {
   display: grid;
-  grid-template-columns: repeat(var(--week-count), 38px);
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.year-map-weeks {
+  display: flex;
   gap: 4px;
 }
 
 .year-map-month {
-  min-height: 34px;
-  padding: 4px 2px;
+  min-height: 38px;
+  padding: 4px 0;
   border: 0;
-  border-left: 2px solid #cad6ca;
+  border-right: 2px solid #cad6ca;
   background: transparent;
   color: #526b58;
   font: inherit;
   font-size: 11px;
   font-weight: 700;
+  text-align: left;
   cursor: pointer;
 }
 
@@ -823,6 +824,7 @@
 .year-map-week {
   display: grid;
   width: 38px;
+  flex: 0 0 38px;
   height: 38px;
   place-items: center;
   border: 1px solid #dde4dc;
@@ -839,11 +841,14 @@
   border-left: 3px solid #8ca791;
 }
 
-.year-map-week.is-selected {
-  border-color: #426c58;
-  background: #426c58;
+.year-map-week.is-assigned {
   color: #fff;
   box-shadow: inset 0 0 0 2px #fff;
+}
+
+.year-map-week.is-active-objective {
+  outline: 2px solid #26382f;
+  outline-offset: 1px;
 }
 
 .year-map-week.crosses-year {
@@ -2044,17 +2049,7 @@
     padding: 31px 0 22px;
   }
 
-  .planner-heading-actions {
-    width: 100%;
-    flex-wrap: wrap;
-  }
 
-  .planner-heading .add-plan-button {
-    width: auto;
-    min-height: 42px;
-    margin-left: auto;
-    padding: 0 13px;
-  }
 
   .yearly-page-heading,
   .planner-year-heading,
@@ -2102,18 +2097,6 @@
   .planner-subtitle {
     max-width: 235px;
     font-size: 13px;
-  }
-
-  .add-plan-button {
-    width: 42px;
-    min-width: 42px;
-    overflow: hidden;
-    padding: 0;
-    font-size: 0;
-  }
-
-  .add-plan-button span {
-    font-size: 22px;
   }
 
   .planner-toolbar {

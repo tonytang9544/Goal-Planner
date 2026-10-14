@@ -54,20 +54,21 @@ function monthForWeekMap(week: Date, year: number): number {
   return thursday.getUTCMonth()
 }
 
-function monthSegments(weeks: Date[], year: number): { month: number; start: number; count: number }[] {
-  const segments: { month: number; start: number; count: number }[] = []
-  for (let index = 0; index < weeks.length; index += 1) {
-    const month = monthForWeekMap(weeks[index], year)
-    const current = segments[segments.length - 1]
-    if (current?.month === month) current.count += 1
-    else segments.push({ month, start: index, count: 1 })
-  }
-  return segments
-}
-
 function dateRangeLabel(weekStart: string, formatter: Intl.DateTimeFormat): string {
   const start = dateFromKey(weekStart)
   return `${formatter.format(start)} – ${formatter.format(addDays(start, 6))}`
+}
+
+function objectiveDateRange(weekStarts: string[], formatter: Intl.DateTimeFormat): string {
+  const sortedWeeks = [...weekStarts].sort()
+  if (sortedWeeks.length === 0) return 'No weeks scheduled'
+  const firstWeek = dateFromKey(sortedWeeks[0])
+  const lastWeekEnd = addDays(dateFromKey(sortedWeeks[sortedWeeks.length - 1]), 6)
+  return `${formatter.format(firstWeek)} – ${formatter.format(lastWeekEnd)}`
+}
+
+function objectiveColor(index: number): string {
+  return `hsl(${(index * 137.508) % 360} 58% 43%)`
 }
 
 function YearlyGoalsList({
@@ -95,11 +96,7 @@ function YearlyGoalsList({
               <li key={objective.id}>
                 <div>
                   <strong>{objective.title}</strong>
-                  <span>
-                    {objective.weekStarts.length
-                      ? objective.weekStarts.map((week) => dateRangeLabel(week, formatter)).join(' · ')
-                      : 'No weeks scheduled'}
-                  </span>
+                  <span>{objectiveDateRange(objective.weekStarts, formatter)}</span>
                 </div>
               </li>
             ))}
@@ -133,7 +130,6 @@ function GoalWizardPage({
   const [saving, setSaving] = useState(false)
   const mapYear = Number.isInteger(year) && year >= 1 && year <= 9999 ? year : initialYear
   const weekDates = weeksForYear(mapYear)
-  const segments = monthSegments(weekDates, mapYear)
   const weekdayFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
 
   function beginAdd() {
@@ -328,6 +324,7 @@ function GoalWizardPage({
               <div
                 className={`objective-draft${activeObjective === objective.key ? ' is-active' : ''}`}
                 key={objective.key}
+                style={{ '--objective-color': objectiveColor(index) } as CSSProperties}
               >
                 <button
                   className="objective-select"
@@ -363,54 +360,59 @@ function GoalWizardPage({
           <section className="year-map" aria-labelledby="year-map-title">
             <h2 id="year-map-title">Choose weeks for {activeObjective ? `objective ${objectives.findIndex((objective) => objective.key === activeObjective) + 1}` : 'an objective'}</h2>
             <p>Weeks start on Monday. Select a month to toggle all overlapping weeks, or refine the selection square by square.</p>
-            <div className="year-map-scroll">
-              <div className="year-map-content" style={{ '--week-count': weekDates.length } as CSSProperties}>
-                <div className="year-map-months">
-                  {segments.map((segment) => (
+            <div className="year-map-content">
+              {Array.from({ length: 12 }, (_, month) => {
+                const monthWeeks = weekDates.filter((week) => monthForWeekMap(week, mapYear) === month)
+                return (
+                  <div className="year-map-month-row" key={month}>
                     <button
                       className="year-map-month"
-                      key={segment.month}
                       type="button"
-                      style={{ gridColumn: `${segment.start + 1} / span ${segment.count}` }}
-                      aria-label={`Toggle all weeks overlapping ${new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(utcDate(year, segment.month, 1))}`}
-                      onClick={() => toggleMonth(segment.month)}
+                      aria-label={`Toggle all weeks overlapping ${new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(utcDate(year, month, 1))}`}
+                      onClick={() => toggleMonth(month)}
                     >
-                      {new Intl.DateTimeFormat(undefined, { month: 'short', timeZone: 'UTC' }).format(utcDate(year, segment.month, 1))}
+                      {new Intl.DateTimeFormat(undefined, { month: 'short', timeZone: 'UTC' }).format(utcDate(year, month, 1))}
                     </button>
-                  ))}
-                </div>
-                <div className="year-map-weeks">
-                  {weekDates.map((week) => {
-                    const key = dateKey(week)
-                    const selected = Boolean(objectives.find((objective) => objective.key === activeObjective)?.weekStarts.includes(key))
-                    const weekEnd = addDays(week, 6)
-                    const crossesYear = week.getUTCFullYear() !== mapYear || weekEnd.getUTCFullYear() !== mapYear
-                    const marksMonthBoundary = weekDates.some((candidate) => {
-                      const monthStart = utcDate(mapYear, candidate.getUTCMonth(), 1)
-                      const monthEnd = utcDate(mapYear, candidate.getUTCMonth() + 1, 0)
-                      return (monthStart >= week && monthStart <= weekEnd)
-                        || (monthEnd >= week && monthEnd <= weekEnd)
-                    })
-                    return (
-                      <button
-                        className={`year-map-week${selected ? ' is-selected' : ''}${crossesYear ? ' crosses-year' : ''}${marksMonthBoundary ? ' marks-month-boundary' : ''}`}
-                        key={key}
-                        type="button"
-                        aria-label={`Week ${dateRangeLabel(key, weekdayFormatter)}${crossesYear ? ', overlaps another year' : ''}${selected ? ', selected' : ''}`}
-                        aria-pressed={selected}
-                        disabled={!activeObjective}
-                        onClick={() => toggleWeek(key)}
-                      >
-                        <span>{weekDates.indexOf(week) + 1}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="year-map-legend">
-                  <span>Each square is one Monday-start week</span>
-                  <span className="year-map-year-boundary">Dashed outline overlaps another year</span>
-                </div>
-              </div>
+                    <div className="year-map-weeks">
+                      {monthWeeks.map((week) => {
+                        const key = dateKey(week)
+                        const assignedObjectives = objectives
+                          .map((objective, index) => ({ objective, index }))
+                          .filter(({ objective }) => objective.weekStarts.includes(key))
+                        const weekEnd = addDays(week, 6)
+                        const crossesYear = week.getUTCFullYear() !== mapYear || weekEnd.getUTCFullYear() !== mapYear
+                        const crossesMonth = week.getUTCMonth() !== weekEnd.getUTCMonth()
+                        const activeAssignment = assignedObjectives.some(({ objective }) => objective.key === activeObjective)
+                        const assignmentNames = assignedObjectives
+                          .map(({ objective }) => objective.title || 'Untitled objective')
+                          .join(', ')
+                        return (
+                          <button
+                            className={`year-map-week${assignedObjectives.length ? ' is-assigned' : ''}${activeAssignment ? ' is-active-objective' : ''}${crossesYear ? ' crosses-year' : ''}${crossesMonth ? ' marks-month-boundary' : ''}`}
+                            key={key}
+                            type="button"
+                            style={{
+                              background: assignedObjectives.length
+                                ? `linear-gradient(90deg, ${assignedObjectives.map(({ index }, colorIndex) => `${objectiveColor(index)} ${colorIndex * 100 / assignedObjectives.length}% ${(colorIndex + 1) * 100 / assignedObjectives.length}%`).join(', ')})`
+                                : undefined,
+                            }}
+                            aria-label={`Week ${dateRangeLabel(key, weekdayFormatter)}${crossesYear ? ', overlaps another year' : ''}${assignmentNames ? `, assigned to ${assignmentNames}` : ', unassigned'}`}
+                            aria-pressed={activeAssignment}
+                            disabled={!activeObjective}
+                            onClick={() => toggleWeek(key)}
+                          >
+                            <span>{weekDates.indexOf(week) + 1}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="year-map-legend">
+              <span>Each square is one Monday-start week</span>
+              <span className="year-map-year-boundary">Dashed outline overlaps another year</span>
             </div>
           </section>
           {error && <p className="error-banner" role="alert">{error}</p>}
@@ -1245,13 +1247,6 @@ function App() {
               <h1 id="planner-title">My planner</h1>
               <p className="planner-subtitle">A calmer way to plan the days ahead.</p>
             </div>
-            <div className="planner-heading-actions">
-              <a className="button button-quiet" href="/yearly-goals">Yearly goals</a>
-              <a className="button button-quiet" href="/goal-wizard">Goal wizard</a>
-              <button className="button button-primary add-plan-button" type="button" onClick={() => openNewItem()}>
-                <span aria-hidden="true">+</span> Add a plan
-              </button>
-            </div>
           </section>
 
           <div className={`planner-layout${view === 'month' || view === 'week' ? ' has-objectives' : ''}`}>
@@ -1295,7 +1290,7 @@ function App() {
                 </button>
               </div>
               <div className="view-switcher" role="group" aria-label="Planner view">
-                {(['month', 'week', 'day', 'year'] as const).map((option) => (
+                {(['year', 'month', 'week', 'day'] as const).map((option) => (
                   <button
                     key={option}
                     type="button"
