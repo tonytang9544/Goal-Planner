@@ -835,8 +835,11 @@
 }
 
 .year-map-weeks {
+  min-width: 0;
   display: flex;
   gap: 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .year-map-month {
@@ -863,8 +866,8 @@
 
 .year-map-week {
   display: grid;
-  width: 38px;
-  flex: 0 0 38px;
+  width: 100px;
+  flex: 0 0 100px;
   height: 38px;
   place-items: center;
   border: 1px solid #dde4dc;
@@ -874,6 +877,7 @@
   font: inherit;
   font-size: 10px;
   font-weight: 650;
+  white-space: nowrap;
   cursor: pointer;
 }
 

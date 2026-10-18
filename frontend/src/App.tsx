@@ -137,7 +137,7 @@ function GoalWizardPage({
   const [saving, setSaving] = useState(false)
   const mapYear = Number.isInteger(year) && year >= 1 && year <= 9999 ? year : initialYear
   const weekDates = weeksForYear(mapYear)
-  const weekdayFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  const weekdayFormatter = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', timeZone: 'UTC' })
 
   function beginAdd() {
     setGoalId('')
@@ -408,7 +408,7 @@ function GoalWizardPage({
                             disabled={!activeObjective}
                             onClick={() => toggleWeek(key)}
                           >
-                            <span>{weekDates.indexOf(week) + 1}</span>
+                            <span>{dateRangeLabel(key, weekdayFormatter)}</span>
                           </button>
                         )
                       })}
