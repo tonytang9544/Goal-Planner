@@ -27,6 +27,11 @@ export interface PlanItem {
   updatedAt: string
 }
 
+export type PlanItemInput = Pick<
+  PlanItem,
+  'date' | 'title' | 'notes' | 'dueAt' | 'completedAt'
+>
+
 export interface GoalObjective {
   id: string
   title: string
@@ -42,6 +47,17 @@ export interface YearlyGoal {
   objectives: GoalObjective[]
   createdAt: string
   updatedAt: string
+}
+
+export interface YearlyGoalObjectiveInput {
+  title: string
+  weekStarts: string[]
+}
+
+export interface YearlyGoalInput {
+  year: number
+  title: string
+  objectives: YearlyGoalObjectiveInput[]
 }
 
 export interface CompletionEvent {

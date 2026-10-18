@@ -99,3 +99,18 @@ Raspberry Pi 2
 ## Suggested MVP scope
 
 Start with account sign-in, a user's month/week/day views, personal daily items with completion, and a TV household page showing today's targets and the two streak measures for every user. Keep notes private, make the shared display and scoring rules explicit, and verify that the app runs comfortably on the Pi before adding reminders, recurring plans, or internet access.
+
+## Code standards
+
+- Keep modules focused on clear responsibilities: React components render and coordinate UI, frontend services handle API communication, and Rust handlers delegate domain rules and persistence to reusable layers. Avoid duplicating business rules across layers.
+- Use strict TypeScript settings and explicit types for component props, API request/response data, and shared domain concepts. Avoid `any`; validate data received from the network at runtime rather than assuming TypeScript types make external input safe.
+- Define and document a versioned API contract shared by the frontend and backend. Keep error responses consistent and actionable, and handle loading, empty, success, and failure states explicitly in the UI.
+- Validate and normalize all untrusted input at the Rust API boundary. Return appropriate HTTP status codes and safe error messages; never expose secrets, passwords, session tokens, or internal implementation details in responses or logs.
+- Keep date-only values, timestamps, and household-local calendar calculations distinct and consistently represented. Centralize timezone and week-start rules so UI, API, persistence, scoring, and tests cannot drift apart.
+- Use SQLite migrations for every schema change. Make multi-step writes transactional, enforce ownership and integrity in backend operations, and keep migration and backup/restore procedures documented and testable.
+- Propagate failures explicitly. Log backend errors with useful operation context while excluding private plan content and credentials; show users a clear recovery action instead of silently ignoring failures.
+- Keep configuration outside source code, provide safe documented defaults where appropriate, and validate required settings at startup. Do not commit credentials, production data, or machine-specific paths.
+- Write tests around domain rules and edge cases, including authorization, timezone/day boundaries, migrations, and API contracts. Add focused component or integration tests for important user flows, and keep tests deterministic by controlling clocks and using temporary databases.
+- Format and lint both TypeScript and Rust consistently, and run the relevant checks and tests before merging. Keep dependency changes deliberate, review security and maintenance implications, and update documentation when behavior or operational requirements change.
+- Prefer small, backward-compatible changes with clear names and minimal coupling. Extract shared logic when it prevents inconsistent behavior, and document non-obvious decisions and invariants near the code they govern.
+- Make operational behavior diagnosable: use structured logs, report startup/configuration failures clearly, and record enough non-sensitive context to trace API and persistence problems without relying on production data.

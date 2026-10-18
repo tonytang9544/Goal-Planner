@@ -1,17 +1,31 @@
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import { PlanItemEditor } from './components/PlanItemEditor'
+import {
+  addDays,
+  dateFromKey,
+  dateKey,
+  dateKeyInTimeZone,
+  monthForWeekMap,
+  startOfWeek,
+  utcDate,
+  weekOverlapsMonth,
+  weeksForYear,
+} from './domain/calendar'
+import { plannerApi } from './services/api'
 import type {
   HouseholdCompetition,
   HouseholdToday,
   PlanItem,
+  PlanItemInput,
   User,
   YearlyGoal,
+  YearlyGoalInput,
 } from './types/planner'
 import './App.css'
 
 type PlannerView = 'month' | 'week' | 'day' | 'year'
 type AuthStatus = 'loading' | 'signed-out' | 'signed-in'
-type GoalDraft = { title: string; weekStarts: string[] }
+type GoalDraft = YearlyGoalInput['objectives'][number]
 
 let nextObjectiveDraftId = 0
 
@@ -20,45 +34,8 @@ function createObjectiveDraftKey(): string {
   return `objective-draft-${nextObjectiveDraftId}`
 }
 
-function utcDate(year: number, month: number, day: number): Date {
-  const date = new Date(0)
-  date.setUTCFullYear(year, month, day)
-  date.setUTCHours(0, 0, 0, 0)
-  return date
-}
-
-interface GoalPayload {
-  year: number
-  title: string
-  objectives: GoalDraft[]
-}
-
 interface ObjectiveDraft extends GoalDraft {
   key: string
-}
-
-function weeksForYear(year: number): Date[] {
-  const firstWeek = startOfWeek(utcDate(year, 0, 1))
-  const lastWeek = startOfWeek(utcDate(year, 11, 31))
-  const weeks: Date[] = []
-  for (let week = firstWeek; week <= lastWeek; week = addDays(week, 7)) {
-    weeks.push(week)
-  }
-  return weeks
-}
-
-function weekOverlapsMonth(week: Date, year: number, month: number): boolean {
-  const monthStart = utcDate(year, month, 1)
-  const monthEnd = utcDate(year, month + 1, 0)
-  const weekEnd = addDays(week, 6)
-  return week <= monthEnd && weekEnd >= monthStart
-}
-
-function monthForWeekMap(week: Date, year: number): number {
-  const thursday = addDays(week, 3)
-  if (thursday.getUTCFullYear() < year) return 0
-  if (thursday.getUTCFullYear() > year) return 11
-  return thursday.getUTCMonth()
 }
 
 function dateRangeLabel(weekStart: string, formatter: Intl.DateTimeFormat): string {
@@ -124,7 +101,7 @@ function GoalWizardPage({
 }: {
   initialYear: number
   goals: YearlyGoal[]
-  onSave: (goalId: string | null, payload: GoalPayload) => Promise<void>
+  onSave: (goalId: string | null, payload: YearlyGoalInput) => Promise<void>
   onDelete: (goalId: string) => Promise<void>
 }) {
   const [action, setAction] = useState<'choose' | 'add' | 'edit' | 'edit-form' | 'remove' | 'saved'>('choose')
@@ -438,67 +415,6 @@ function GoalWizardPage({
 const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const refreshIntervalMs = 15_000
 
-interface AuthResponse {
-  user: User
-  expiresAt: string
-  householdTimeZone: string
-}
-
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    credentials: 'same-origin',
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
-  })
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Request failed (${response.status})`)
-  }
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
-}
-
-function dateKey(date: Date): string {
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(date.getUTCDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function dateFromKey(value: string): Date {
-  const [year, month, day] = value.split('-').map(Number)
-  return utcDate(year, month - 1, day)
-}
-
-function dateKeyInTimeZone(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone,
-  }).formatToParts(date)
-  const part = (type: string) => parts.find((entry) => entry.type === type)?.value
-  const year = part('year')
-  const month = part('month')
-  const day = part('day')
-  if (!year || !month || !day) throw new Error('Could not determine the date')
-  return `${year}-${month}-${day}`
-}
-
-function addDays(date: Date, amount: number): Date {
-  const result = new Date(date)
-  result.setUTCDate(result.getUTCDate() + amount)
-  return result
-}
-
-function startOfWeek(date: Date): Date {
-  const offset = (date.getUTCDay() + 6) % 7
-  return addDays(date, -offset)
-}
-
 function itemsForDate(items: PlanItem[], date: string): PlanItem[] {
   return items
     .filter((item) => item.date === date)
@@ -597,7 +513,7 @@ function App() {
   useEffect(() => {
     if (isTvMode) return
     let active = true
-    apiRequest<AuthResponse>('/api/session')
+    plannerApi.getSession()
       .then((response) => {
         if (!active) return
         setUser(response.user)
@@ -646,25 +562,23 @@ function App() {
   })
 
   const refreshHousehold = useCallback(async () => {
-    const summary = await apiRequest<HouseholdToday>('/api/household/today')
+    const summary = await plannerApi.getHouseholdToday()
     setHousehold(summary)
     setHouseholdTimeZone(summary.timeZone)
   }, [])
 
   const refreshCompetition = useCallback(async () => {
-    const summary = await apiRequest<HouseholdCompetition>(
-      `/api/household/competition?period=${competitionPeriod}`,
-    )
+    const summary = await plannerApi.getHouseholdCompetition(competitionPeriod)
     setCompetition(summary)
   }, [competitionPeriod])
 
   const refreshAccounts = useCallback(async () => {
-    const result = await apiRequest<User[]>('/api/accounts')
+    const result = await plannerApi.listAccounts()
     setAccounts(result)
   }, [])
 
   const refreshGoals = useCallback(async () => {
-    const result = await apiRequest<YearlyGoal[]>('/api/goals')
+    const result = await plannerApi.listGoals()
     setGoals(result)
   }, [])
 
@@ -675,9 +589,7 @@ function App() {
     )
     const start = dateKey(gridStart)
     const end = dateKey(addDays(gridStart, 41))
-    const result = await apiRequest<PlanItem[]>(
-      `/api/plans?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-    )
+    const result = await plannerApi.listPlans(start, end)
     setItems(result)
   }, [selectedDate])
 
@@ -733,17 +645,9 @@ function App() {
     event.preventDefault()
     setError(null)
     try {
-      const response = await apiRequest<AuthResponse>(
-        authMode === 'register' ? '/api/register' : '/api/login',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            username,
-            password,
-            ...(authMode === 'register' ? { displayName } : {}),
-          }),
-        },
-      )
+      const response = authMode === 'register'
+        ? await plannerApi.register(username, password, displayName)
+        : await plannerApi.signIn(username, password)
       setUser(response.user)
       setHouseholdTimeZone(response.householdTimeZone)
       setSelectedDate(dateKeyInTimeZone(new Date(), response.householdTimeZone))
@@ -756,7 +660,7 @@ function App() {
 
   async function signOut() {
     try {
-      await apiRequest<void>('/api/logout', { method: 'POST' })
+      await plannerApi.signOut()
       setUser(null)
       setItems([])
       setHousehold(null)
@@ -776,7 +680,7 @@ function App() {
     setError(null)
     setNotice(null)
     try {
-      await apiRequest<void>(`/api/accounts/${account.id}`, { method: 'DELETE' })
+      await plannerApi.deleteAccount(account.id)
       setAccounts((current) => current.filter((candidate) => candidate.id !== account.id))
       setNotice(`${account.displayName}'s account and planner data were deleted.`)
     } catch (requestError) {
@@ -797,13 +701,7 @@ function App() {
 
     setChangingPassword(true)
     try {
-      await apiRequest<void>('/api/account/password', {
-        method: 'PUT',
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-      })
+      await plannerApi.changePassword(currentPassword, newPassword)
       setCurrentPassword('')
       setNewPassword('')
       setConfirmNewPassword('')
@@ -815,19 +713,13 @@ function App() {
     }
   }
 
-  async function saveGoal(goalId: string | null, payload: GoalPayload) {
-    const saved = await apiRequest<YearlyGoal>(
-      goalId ? `/api/goals/${goalId}` : '/api/goals',
-      {
-        method: goalId ? 'PUT' : 'POST',
-        body: JSON.stringify(payload),
-      },
-    )
+  async function saveGoal(goalId: string | null, payload: YearlyGoalInput) {
+    const saved = await plannerApi.saveGoal(goalId, payload)
     setGoals((current) => [...current.filter((goal) => goal.id !== saved.id), saved])
   }
 
   async function removeGoal(goalId: string) {
-    await apiRequest<void>(`/api/goals/${goalId}`, { method: 'DELETE' })
+    await plannerApi.deleteGoal(goalId)
     setGoals((current) => current.filter((goal) => goal.id !== goalId))
   }
 
@@ -845,15 +737,9 @@ function App() {
     setView(nextView)
   }
 
-  async function saveItem(values: Omit<PlanItem, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'position'>) {
+  async function saveItem(values: PlanItemInput) {
     try {
-      const saved = await apiRequest<PlanItem>(
-        editingItem ? `/api/plans/${editingItem.id}` : '/api/plans',
-        {
-          method: editingItem ? 'PUT' : 'POST',
-          body: JSON.stringify(values),
-        },
-      )
+      const saved = await plannerApi.savePlan(editingItem?.id ?? null, values)
       setItems((current) => [...current.filter((item) => item.id !== saved.id), saved])
       setSelectedDate(saved.date)
       setEditingItem(undefined)
@@ -866,10 +752,7 @@ function App() {
 
   async function toggleCompletion(item: PlanItem) {
     try {
-      const updated = await apiRequest<PlanItem>(`/api/plans/${item.id}/completion`, {
-        method: 'PATCH',
-        body: JSON.stringify({ completed: !item.completedAt }),
-      })
+      const updated = await plannerApi.setCompletion(item.id, !item.completedAt)
       setItems((current) => current.map((candidate) => candidate.id === item.id ? updated : candidate))
       await refreshHousehold()
       setError(null)
@@ -880,7 +763,7 @@ function App() {
 
   async function deleteItem(item: PlanItem) {
     try {
-      await apiRequest<void>(`/api/plans/${item.id}`, { method: 'DELETE' })
+      await plannerApi.deletePlan(item.id)
       setItems((current) => current.filter((candidate) => candidate.id !== item.id))
       await refreshHousehold()
       setError(null)
@@ -898,10 +781,7 @@ function App() {
     const [moved] = reordered.splice(index, 1)
     reordered.splice(targetIndex, 0, moved)
     try {
-      await apiRequest<void>('/api/plans/order', {
-        method: 'PUT',
-        body: JSON.stringify({ date: item.date, itemIds: reordered.map((candidate) => candidate.id) }),
-      })
+      await plannerApi.reorderPlans(item.date, reordered.map((candidate) => candidate.id))
       setItems((current) => current.map((candidate) => {
         const position = reordered.findIndex((ordered) => ordered.id === candidate.id)
         return position < 0 ? candidate : { ...candidate, position }

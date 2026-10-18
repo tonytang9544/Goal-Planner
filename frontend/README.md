@@ -1,32 +1,28 @@
-# React + TypeScript + Vite
+# Home Planner frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The frontend is a React and TypeScript application built with Vite. It communicates with the Rust server through same-origin `/api` requests; Vite proxies those requests to the local server during development.
 
-Currently, two official plugins are available:
+## Code organization
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `src/App.tsx` coordinates planner state and page-level flows.
+- `src/components/` contains reusable UI components.
+- `src/services/api.ts` owns HTTP requests, request payloads, error handling, and runtime decoding of server responses. Keep endpoint details out of presentation components.
+- `src/types/planner.ts` defines the frontend's planner and API data types. These types complement—not replace—runtime validation of network data.
+- Keep date-only keys (`YYYY-MM-DD`) separate from timestamps. Interpret date keys in UTC for calendar arithmetic, and use the household timezone only when converting an instant to a household-local date or displaying a due time.
 
-## React Compiler
+The `/api` response shapes are a shared contract with `server/src/api.rs`. Update both sides together when changing a request or response. Avoid incompatible contract changes; introduce a versioned route before an incompatible API revision.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The development proxy defaults to `http://127.0.0.1:3000`. Override it with `VITE_API_PROXY_TARGET` in an ignored local environment file when the server runs elsewhere; the target must be an HTTP or HTTPS base URL and must not contain credentials.
 
-## Expanding the Oxlint configuration
+## Development and verification
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Run these commands from this directory:
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm run dev
+npm run lint
+npm test
+npm run build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Tests use Node's built-in test runner and TypeScript type stripping (Node 22.18 or newer). The production build runs strict TypeScript project checks before creating static assets. Keep tests, lint, and build passing before merging frontend changes.
